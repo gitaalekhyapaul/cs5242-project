@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=gap_steam
-#SBATCH --output=~/logs/%j_out.log
-#SBATCH --error=~/errors/%j_error.log
+#SBATCH --output=/home/g/gapaul/logs/%j_out.log
+#SBATCH --error=/home/g/gapaul/errors/%j_error.log
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=8
 ##SBATCH --gres=gpu:a100-40:1
