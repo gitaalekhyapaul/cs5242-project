@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "steam-crawler"
+version = "0.1.0"
+description = "Stage-based Steam dataset crawler with CSV caching and notebook orchestration."
+requires-python = ">=3.10"
+dependencies = [
+  "psutil>=6.1.0",
+  "python-dotenv>=1.0.1",
+  "requests>=2.32.0",
+  "tqdm>=4.66.0",
+]
+
+
+[tool.setuptools.packages.find]
+where = ["src"]

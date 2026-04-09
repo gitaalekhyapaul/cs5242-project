@@ -1,0 +1,197 @@
+from __future__ import annotations
+
+import csv
+import gzip
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from steam_crawler.config import Config
+from steam_crawler.pipeline import Pipeline
+
+
+def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def read_csv(path: Path) -> list[dict[str, str]]:
+    if path.suffix == ".gz":
+        opener = gzip.open
+    else:
+        opener = open
+    with opener(path, "rt", newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+class FakeHttpClient:
+    def __init__(self, handler):
+        self.handler = handler
+        self.retry_count = 0
+        self.error_count = 0
+
+    def get_json(self, url: str, *, stage: str, appid: int | None = None, params: dict[str, object] | None = None):
+        return self.handler(url=url, stage=stage, appid=appid, params=params or {})
+
+
+class PipelineResumeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def build_config(self, **overrides: object) -> Config:
+        defaults = {
+            "root_dir": self.root,
+            "steam_api_key": "test-key",
+            "data_dir": self.root / "data",
+            "log_dir": self.root / "logs",
+            "sample_size": 2,
+            "min_recommendations": 5_000,
+            "reviews_per_game": 4,
+            "recent_quota": 2,
+            "helpful_quota": 2,
+            "reviews_page_size": 2,
+            "api_host_delay_sec": 0.0,
+            "store_host_delay_sec": 0.0,
+            "default_host_delay_sec": 0.0,
+        }
+        defaults.update(overrides)
+        return Config(**defaults)
+
+    def test_stage_02_persists_each_successful_app_before_crash(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_01_apps_catalog.csv",
+            ["appid", "name", "last_modified", "price_change_number", "raw_json"],
+            [
+                {"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {"appid": 2, "name": "Two", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {"appid": 3, "name": "Three", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+            ],
+        )
+
+        def crashing_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_02":
+                raise AssertionError(stage)
+            if appid == 3:
+                raise ValueError("synthetic crash")
+            return {
+                str(appid): {
+                    "success": True,
+                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                }
+            }
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(crashing_handler))
+        with self.assertRaises(ValueError):
+            pipeline.run_stage_02()
+
+        partial_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
+        self.assertEqual([row["appid"] for row in partial_rows], ["1", "2"])
+
+        def recovery_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            return {
+                str(appid): {
+                    "success": True,
+                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                }
+            }
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(recovery_handler))
+        pipeline.run_stage_02()
+        resumed_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
+        self.assertEqual([row["appid"] for row in resumed_rows], ["1", "2", "3"])
+
+    def test_stage_05_resumes_mid_game_without_duplicate_reviews(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_04_selected_games.csv",
+            ["appid"],
+            [{"appid": 10}],
+        )
+
+        call_log: list[tuple[str, str]] = []
+        fail_helpful_once = {"value": True}
+
+        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_05":
+                raise AssertionError(stage)
+            review_filter = str(params["filter"])
+            cursor = str(params["cursor"])
+            call_log.append((review_filter, cursor))
+            if review_filter == "recent" and cursor == "*":
+                return {
+                    "reviews": [
+                        {
+                            "recommendationid": "r1",
+                            "author": {"steamid": "100"},
+                            "timestamp_created": 1,
+                            "review": "recent one",
+                        },
+                        {
+                            "recommendationid": "r2",
+                            "author": {"steamid": "101"},
+                            "timestamp_created": 2,
+                            "review": "recent two",
+                        },
+                    ],
+                    "cursor": "recent-2",
+                }
+            if review_filter == "all" and cursor == "*":
+                if fail_helpful_once["value"]:
+                    fail_helpful_once["value"] = False
+                    raise RuntimeError("synthetic helpful failure")
+                return {
+                    "reviews": [
+                        {
+                            "recommendationid": "h1",
+                            "author": {"steamid": "200"},
+                            "timestamp_created": 3,
+                            "review": "helpful one",
+                        },
+                        {
+                            "recommendationid": "h2",
+                            "author": {"steamid": "201"},
+                            "timestamp_created": 4,
+                            "review": "helpful two",
+                        },
+                    ],
+                    "cursor": "helpful-2",
+                }
+            raise AssertionError((review_filter, cursor))
+
+        config = self.build_config()
+        pipeline = Pipeline(config, http_client=FakeHttpClient(review_handler))
+        first_result = pipeline.run_stage_05()
+        self.assertEqual(first_result.rows_written, 2)
+
+        first_rows = read_csv(self.root / "data" / "stage_05_reviews_dataset.csv.gz")
+        self.assertEqual([row["recommendationid"] for row in first_rows], ["r1", "r2"])
+
+        progress_rows = read_csv(self.root / "data" / "stage_05_progress.csv")
+        self.assertEqual(progress_rows[-1]["status"], "failed")
+        self.assertEqual(progress_rows[-1]["recent_cursor"], "recent-2")
+        self.assertEqual(progress_rows[-1]["helpful_cursor"], "*")
+
+        pipeline = Pipeline(config, http_client=FakeHttpClient(review_handler))
+        second_result = pipeline.run_stage_05()
+        self.assertEqual(second_result.rows_written, 4)
+
+        final_rows = read_csv(self.root / "data" / "stage_05_reviews_dataset.csv.gz")
+        self.assertEqual([row["recommendationid"] for row in final_rows], ["r1", "r2", "h1", "h2"])
+
+        final_progress = read_csv(self.root / "data" / "stage_05_progress.csv")
+        self.assertEqual(final_progress[-1]["status"], "completed")
+        self.assertEqual(call_log.count(("recent", "*")), 1)
+        self.assertEqual(call_log.count(("all", "*")), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
