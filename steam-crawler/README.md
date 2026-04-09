@@ -314,9 +314,10 @@ It reflects your current NUS SoC workflow:
 
 - activates the shared `~/env`
 - runs from the `steam-crawler` folder itself
-- writes Slurm stdout/stderr to `~/logs` and `~/errors`
+- redirects runtime stdout/stderr to `$HOME/logs` and `$HOME/errors`
 - keeps the interactive Jupyter Lab command available but commented
 - executes the notebook headlessly via `jupyter nbconvert`
+- disables the notebook cell timeout for long-running full crawls
 
 Before using it, make sure the shared environment already has the required packages:
 
@@ -339,8 +340,14 @@ The batch path in [`sbatch.sh`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/
 jupyter nbconvert \
   --to notebook \
   --execute notebooks/steam_crawler.ipynb \
+  --ExecutePreprocessor.timeout=-1 \
   --output steam_crawler.executed.ipynb
 ```
+
+For the full cluster run, make sure your cluster-side [`steam-crawler/.env`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/.env) or exported environment includes both:
+
+- `STEAM_API_KEY=...`
+- `STEAM_RUN_MODE=full`
 
 ## Architecture and execution model
 

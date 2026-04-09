@@ -25,10 +25,11 @@ TOKEN=$(openssl rand -base64 64 | tr -dc 'A-Za-z0-9' | head -c 50; echo)
 
 # Interactive Jupyter remains available as an opt-in path if you need to reverse tunnel into the node.
 # echo "Use token: $TOKEN, Jupyter will run on: $HOSTNAME:$PORT"
-# jupyter lab --no-browser --ip=0.0.0.0 --port=$PORT --ServerApp.token=$TOKEN --ServerApp.allow_origin='*'
+jupyter lab --no-browser --ip=0.0.0.0 --port=$PORT --ServerApp.token=$TOKEN --ServerApp.allow_origin='*'
 
 # Default batch path: execute the crawler notebook headlessly and persist the executed notebook artifact.
-jupyter nbconvert \
-  --to notebook \
-  --execute notebooks/steam_crawler.ipynb \
-  --output steam_crawler.executed.ipynb
+    # jupyter nbconvert \
+    # --to notebook \
+    # --execute notebooks/steam_crawler.ipynb \
+    # --ExecutePreprocessor.timeout=-1 \
+    # --output steam_crawler.executed.ipynb
