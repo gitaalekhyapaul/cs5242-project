@@ -140,7 +140,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-If you want to execute the notebook non-interactively on a cluster, also install Jupyter tooling:
+If you want to execute the notebook non-interactively on a cluster, install Jupyter tooling into whichever Python environment the cluster job will activate:
 
 ```bash
 .venv/bin/pip install notebook nbconvert
@@ -309,38 +309,37 @@ The Postman collection is kept only as an API reference artifact and request exa
 
 ### Full run on SLURM
 
-Below is a simple SLURM script that executes the notebook headlessly.
+The tracked cluster script is [`sbatch.sh`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/sbatch.sh).
+It reflects your current NUS SoC workflow:
+
+- activates the shared `~/env`
+- runs from the `steam-crawler` folder itself
+- writes Slurm stdout/stderr to `~/logs` and `~/errors`
+- keeps the interactive Jupyter Lab command available but commented
+- executes the notebook headlessly via `jupyter nbconvert`
+
+Before using it, make sure the shared environment already has the required packages:
 
 ```bash
-#!/bin/bash
-#SBATCH --job-name=steam-crawler
-#SBATCH --output=steam-crawler-%j.out
-#SBATCH --error=steam-crawler-%j.err
-#SBATCH --time=24:00:00
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+source ~/env/bin/activate
+pip install -r requirements.txt
+pip install notebook nbconvert
+```
 
-set -euo pipefail
+Then submit the tracked script from the project folder:
 
-cd /path/to/cs5242-project/steam-crawler
+```bash
+cd steam-crawler
+sbatch sbatch.sh
+```
 
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/pip install notebook nbconvert
+The batch path in [`sbatch.sh`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/sbatch.sh) runs:
 
-export STEAM_API_KEY="your-steam-api-key"
-export STEAM_RUN_MODE="full"
-
-.venv/bin/jupyter nbconvert \
+```bash
+jupyter nbconvert \
   --to notebook \
   --execute notebooks/steam_crawler.ipynb \
   --output steam_crawler.executed.ipynb
-```
-
-Submit it with:
-
-```bash
-sbatch run_steam_crawler.slurm
 ```
 
 ## Architecture and execution model
