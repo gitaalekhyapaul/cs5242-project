@@ -9,13 +9,14 @@ The implementation is intentionally split between reusable Python classes in `sr
 
 ## Status Against PLAN.md
 
-The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, and resume behavior.
+The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, resume behavior, and test coverage.
 
-One remaining difference is in test scope:
+The test suite now has two layers:
 
-- The repo has unit tests and deterministic resume tests, plus a validated live smoke run, but it does not contain a committed automated real-network integration test that mixes real app ids with one intentionally invalid app id.
+- deterministic local tests that run quickly and do not depend on Steam availability
+- an opt-in live integration test that exercises the real `appdetails` endpoint with stable app ids plus one intentionally invalid app id
 
-That gap does not affect the crawler runtime itself, but it is the one place where the implementation is less exhaustive than the original test-plan wording.
+This keeps the default development flow stable while still covering the live API path when you explicitly request it.
 
 ## Approach
 
@@ -224,6 +225,31 @@ These tests currently cover:
 - deterministic sampling
 - Stage 2 crash-safe checkpointing
 - Stage 5 mid-game resume without duplicate reviews
+- an opt-in live Stage 2 integration test against the real `appdetails` endpoint
+
+### Opt-in live integration test
+
+The live integration test is intentionally skipped by default so it does not disrupt normal development, notebook execution, or commit flow.
+
+It runs only when both of these are present:
+
+- `RUN_LIVE_STEAM_TESTS=1`
+- `STEAM_API_KEY`
+
+Run it with:
+
+```bash
+cd steam-crawler
+RUN_LIVE_STEAM_TESTS=1 STEAM_API_KEY=... .venv/bin/python -m unittest discover -s tests
+```
+
+What it validates:
+
+- real `appdetails` responses for a couple of stable app ids
+- correct CSV persistence through Stage 2
+- graceful handling of one intentionally invalid app id without breaking the stage
+
+If the env flag is not set, the test is reported as skipped rather than silently ignored.
 
 ### Smoke test through the notebook
 

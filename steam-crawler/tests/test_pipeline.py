@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import gzip
+import os
 import sys
 import tempfile
 import unittest
@@ -191,6 +192,73 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(final_progress[-1]["status"], "completed")
         self.assertEqual(call_log.count(("recent", "*")), 1)
         self.assertEqual(call_log.count(("all", "*")), 2)
+
+
+@unittest.skipUnless(os.getenv("RUN_LIVE_STEAM_TESTS") == "1", "Set RUN_LIVE_STEAM_TESTS=1 to run live Steam tests.")
+class PipelineLiveIntegrationTests(unittest.TestCase):
+    VALID_APP_IDS = (10, 300)
+    INVALID_APP_ID = 999_999_999
+
+    def setUp(self) -> None:
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.root = Path(self.tempdir.name)
+
+    def tearDown(self) -> None:
+        self.tempdir.cleanup()
+
+    def test_stage_02_live_appdetails_handles_valid_and_invalid_appids(self) -> None:
+        steam_api_key = os.getenv("STEAM_API_KEY")
+        if not steam_api_key:
+            self.skipTest("STEAM_API_KEY is required for live Steam integration tests.")
+
+        stage_01_rows = [
+            {
+                "appid": appid,
+                "name": f"app-{appid}",
+                "last_modified": "",
+                "price_change_number": "",
+                "raw_json": "{}",
+            }
+            for appid in (*self.VALID_APP_IDS, self.INVALID_APP_ID)
+        ]
+        write_csv(
+            self.root / "data" / "stage_01_apps_catalog.csv",
+            ["appid", "name", "last_modified", "price_change_number", "raw_json"],
+            stage_01_rows,
+        )
+
+        pipeline = Pipeline(
+            Config(
+                root_dir=self.root,
+                steam_api_key=steam_api_key,
+                data_dir=self.root / "data",
+                log_dir=self.root / "logs",
+                request_timeout_sec=15.0,
+                max_retries=1,
+                api_host_delay_sec=0.0,
+                store_host_delay_sec=0.0,
+                default_host_delay_sec=0.0,
+            )
+        )
+        result = pipeline.run_stage_02()
+        self.assertEqual(result.rows_written, 3)
+
+        rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
+        self.assertEqual(len(rows), 3)
+        rows_by_appid = {int(row["appid"]): row for row in rows}
+
+        for appid in self.VALID_APP_IDS:
+            row = rows_by_appid[appid]
+            self.assertEqual(row["success"].lower(), "true")
+            self.assertTrue(row["type"])
+            self.assertIn(f'"{appid}"', row["raw_json"])
+
+        invalid_row = rows_by_appid[self.INVALID_APP_ID]
+        self.assertEqual(invalid_row["success"].lower(), "false")
+        self.assertEqual(invalid_row["type"], "")
+        self.assertEqual(invalid_row["category_ids"], "")
+        self.assertEqual(invalid_row["recommendations_total"], "")
+        self.assertIn(f'"{self.INVALID_APP_ID}"', invalid_row["raw_json"])
 
 
 if __name__ == "__main__":
