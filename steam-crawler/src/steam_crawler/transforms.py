@@ -6,10 +6,14 @@ from datetime import datetime, timezone
 
 
 def minified_json(payload: object) -> str:
+    """Serialize raw API payloads compactly so they remain CSV-friendly."""
+
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def flatten_app_catalog_row(app: dict[str, object]) -> dict[str, object]:
+    """Keep the catalog row narrow while preserving the original record."""
+
     return {
         "appid": app.get("appid"),
         "name": app.get("name", ""),
@@ -20,6 +24,8 @@ def flatten_app_catalog_row(app: dict[str, object]) -> dict[str, object]:
 
 
 def flatten_app_details(appid: int, payload: dict[str, object]) -> dict[str, object]:
+    """Extract only the appdetails fields needed for later filtering and joins."""
+
     keyed_payload = payload.get(str(appid), {}) if isinstance(payload, dict) else {}
     data = keyed_payload.get("data", {}) if isinstance(keyed_payload, dict) else {}
     categories = data.get("categories", []) if isinstance(data, dict) else []
@@ -40,6 +46,8 @@ def flatten_app_details(appid: int, payload: dict[str, object]) -> dict[str, obj
 
 
 def flatten_review_row(appid: int, review: dict[str, object], source_stream: str) -> dict[str, object]:
+    """Normalize one Steam review row for the final dataset CSV."""
+
     author = review.get("author", {}) if isinstance(review, dict) else {}
     return {
         "appid": appid,
@@ -55,6 +63,8 @@ def flatten_review_row(appid: int, review: dict[str, object], source_stream: str
 def merge_catalog_and_details(
     app_row: dict[str, str], detail_row: dict[str, str] | None, min_recommendations: int
 ) -> dict[str, object]:
+    """Join catalog rows with appdetails and derive the sampling eligibility flag."""
+
     detail_row = detail_row or {}
     recommendations_total = detail_row.get("recommendations_total") or ""
     try:
@@ -82,6 +92,8 @@ def merge_catalog_and_details(
 
 
 def sample_rows(rows: list[dict[str, str]], sample_size: int, seed: int) -> list[dict[str, str]]:
+    """Sample rows deterministically so reruns reproduce the same selected games."""
+
     if len(rows) <= sample_size:
         return list(rows)
     rng = random.Random(seed)
@@ -89,5 +101,6 @@ def sample_rows(rows: list[dict[str, str]], sample_size: int, seed: int) -> list
 
 
 def utc_timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    """Return an ISO-8601 UTC timestamp for logs and checkpoint files."""
 
+    return datetime.now(timezone.utc).isoformat()

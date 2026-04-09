@@ -10,6 +10,8 @@ LOGGER_NAME = "steam_crawler"
 
 
 def setup_logger(log_dir: Path) -> logging.Logger:
+    """Create the shared run logger once per process."""
+
     log_dir.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.INFO)
@@ -46,6 +48,8 @@ ERROR_LOG_FIELDS = [
 
 @dataclass(slots=True)
 class CsvErrorLogger:
+    """Append structured API failure rows to a CSV debugging log."""
+
     log_path: Path
 
     def __post_init__(self) -> None:
@@ -56,8 +60,9 @@ class CsvErrorLogger:
                 writer.writeheader()
 
     def log(self, row: dict[str, object]) -> None:
+        """Write one error record with the declared schema and blank-fill missing fields."""
+
         safe_row = {field: row.get(field, "") for field in ERROR_LOG_FIELDS}
         with self.log_path.open("a", newline="", encoding="utf-8") as handle:
             writer = csv.DictWriter(handle, fieldnames=ERROR_LOG_FIELDS)
             writer.writerow(safe_row)
-

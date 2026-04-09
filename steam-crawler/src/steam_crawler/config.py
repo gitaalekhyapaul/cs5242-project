@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 
 @dataclass(slots=True)
 class Config:
+    """Central runtime configuration for both notebook and CLI execution."""
+
     root_dir: Path
     steam_api_key: str
     data_dir: Path
@@ -41,6 +43,8 @@ class Config:
         steam_api_key: str | None = None,
         **overrides: object,
     ) -> "Config":
+        """Build config from a project root plus optional environment overrides."""
+
         resolved_root = Path(root_dir).resolve()
         env_path = Path(dotenv_path).resolve() if dotenv_path is not None else resolved_root / ".env"
         load_dotenv(env_path, override=False)

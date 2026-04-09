@@ -7,6 +7,16 @@ This folder contains a stage-based Steam crawler designed for two modes of opera
 
 The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and a single orchestration notebook in `notebooks/steam_crawler.ipynb`.
 
+## Status Against PLAN.md
+
+The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, and resume behavior.
+
+One remaining difference is in test scope:
+
+- The repo has unit tests and deterministic resume tests, plus a validated live smoke run, but it does not contain a committed automated real-network integration test that mixes real app ids with one intentionally invalid app id.
+
+That gap does not affect the crawler runtime itself, but it is the one place where the implementation is less exhaustive than the original test-plan wording.
+
 ## Approach
 
 The crawler is built around cacheable CSV stages so each expensive step can be resumed without recomputing earlier work.
@@ -22,6 +32,42 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
 
+### Stage schemas
+
+The pipeline intentionally keeps a narrow flattened schema for downstream analysis while retaining a raw JSON column for recovery and debugging.
+
+- Stage 1 fields:
+  - `appid`
+  - `name`
+  - `last_modified`
+  - `price_change_number`
+  - `raw_json`
+- Stage 2 fields:
+  - `appid`
+  - `success`
+  - `type`
+  - `category_ids`
+  - `category_descriptions`
+  - `recommendations_total`
+  - `raw_json`
+- Stage 3 fields:
+  - Stage 1 catalog columns
+  - Stage 2 detail columns
+  - `eligible_for_sampling`
+- Stage 4 fields:
+  - Stage 3 fields
+  - `sample_rank`
+  - `random_seed`
+  - `sampled_at`
+- Stage 5 fields:
+  - `appid`
+  - `recommendationid`
+  - `author_steamid`
+  - `timestamp_created`
+  - `review_text`
+  - `source_stream`
+  - `raw_json`
+
 ### Why the code is class-based
 
 The main runtime logic is encapsulated in classes for readability and reuse:
@@ -32,6 +78,17 @@ The main runtime logic is encapsulated in classes for readability and reuse:
 - `ReviewCollectionState`: serializable per-game cursor and counter state for review resume.
 - `ReviewCollector`: encapsulates the `recent + helpful + backfill` review strategy.
 - `Pipeline`: notebook-friendly orchestrator for all stages.
+
+### Module map
+
+The package is intentionally split by responsibility instead of putting all crawler logic in the notebook:
+
+- [`config.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/config.py): runtime configuration, path layout, and `.env` loading
+- [`http_client.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/http_client.py): shared `requests` session, host throttling, retry, backoff, and error capture
+- [`transforms.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/transforms.py): CSV flatteners, JSON serialization, sampling, and merge helpers
+- [`logging_utils.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/logging_utils.py): run logger and structured CSV error logger
+- [`pipeline.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/pipeline.py): staged orchestration, checkpointing, progress bars, and CLI entrypoint
+- [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): single operator notebook for smoke validation and full cluster execution
 
 ### Retry and error handling
 
@@ -126,6 +183,20 @@ The notebook uses two profiles:
   - `helpful_quota=500`
   - no stage limits
 
+Additional configuration knobs exposed through the package config include:
+
+- `request_timeout_sec`
+- `max_retries`
+- `base_backoff_sec`
+- `max_backoff_sec`
+- `appdetails_country_code`
+- `appdetails_language`
+- `reviews_language`
+- `reviews_page_size`
+- `api_host_delay_sec`
+- `store_host_delay_sec`
+- `default_host_delay_sec`
+
 ## How to test locally in small batches
 
 The intended validation path is:
@@ -174,6 +245,8 @@ Because the smoke profile has stage limits, it will:
 - fetch appdetails for only a small number of apps
 - sample only a handful of games
 - fetch reviews for only a couple of games
+
+If you want a heavier but still local smoke run, raise the smoke profile limits in the notebook or run the CLI with larger bounds, for example `max_apps=200`, `sample_size=2`, `max_games=2`, and `reviews_per_game=200`.
 
 ### Smoke test through the CLI
 
@@ -244,6 +317,25 @@ Submit it with:
 sbatch run_steam_crawler.slurm
 ```
 
+## Architecture and execution model
+
+The notebook is deliberately thin. Its job is:
+
+1. Locate the project root.
+2. Install the declared dependencies into the current kernel.
+3. Run a preflight check for node resources and endpoint availability.
+4. Select smoke or full limits.
+5. Call the staged Python package methods.
+
+The package owns the expensive or stateful logic:
+
+1. HTTP retries and throttling happen in `HttpClient`.
+2. CSV normalization happens in `transforms.py`.
+3. Resume-aware stage orchestration happens in `Pipeline`.
+4. Per-game review cursors are represented by `ReviewCollectionState`.
+
+This split keeps the notebook submission-friendly while ensuring the actual crawler logic is testable outside Jupyter.
+
 ## Output artifacts
 
 Generated outputs are written under `data/`:
@@ -261,6 +353,14 @@ Generated logs are written under `logs/`:
 - `errors.csv`
 
 These directories are ignored by git.
+
+## Security and operational notes
+
+- Secrets are loaded from `STEAM_API_KEY` or `steam-crawler/.env`; the `.env` file is gitignored and is not part of the tracked project.
+- The notebook preflight checks resource visibility and endpoint reachability before any expensive crawl starts.
+- Every network request uses an explicit timeout.
+- Retry behavior is bounded by `max_retries` and `max_backoff_sec`; the crawler does not spin indefinitely on throttling or transient failures.
+- Error logs intentionally include headers and bodies for debugging. Treat `logs/errors.csv` as a debugging artifact and avoid sharing it blindly if upstream services ever return sensitive values in headers or response bodies.
 
 ## Notes on resume behavior
 
