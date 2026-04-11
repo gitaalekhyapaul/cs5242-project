@@ -128,6 +128,9 @@ class HttpClient:
         exception: Exception | None,
         retry_after_seconds: float | None,
     ) -> None:
+        exception_summary = ""
+        if exception is not None:
+            exception_summary = f"{type(exception).__name__}: {exception}"
         self.error_count += 1
         self.error_logger.log(
             {
@@ -146,12 +149,13 @@ class HttpClient:
             }
         )
         self.logger.warning(
-            "HTTP error | stage=%s | appid=%s | attempt=%s | status=%s | retry_after=%s | headers=%s | body=%s",
+            "HTTP error | stage=%s | appid=%s | attempt=%s | status=%s | retry_after=%s | exception=%s | headers=%s | body=%s",
             stage,
             appid,
             attempt,
             status_code,
             retry_after_seconds,
+            exception_summary,
             headers or {},
             body,
         )
@@ -176,8 +180,13 @@ class HttpClient:
                 headers = dict(response.headers)
                 status_code = response.status_code
                 body = response.text
-                if response.status_code in RETRYABLE_STATUS_CODES:
-                    # Prefer server-provided retry timing when available, otherwise back off with jitter.
+                response.raise_for_status()
+                return response.json()
+            except requests.HTTPError as exc:
+                last_exception = exc
+                should_retry = status_code in RETRYABLE_STATUS_CODES and attempt <= self.config.max_retries
+                retry_after_seconds = None
+                if should_retry:
                     retry_after_seconds = compute_backoff_delay(
                         attempt=attempt,
                         base_delay=self.config.base_backoff_sec,
@@ -185,26 +194,22 @@ class HttpClient:
                         headers=headers,
                         rng=self._rng,
                     )
-                    self._record_error(
-                        stage=stage,
-                        appid=appid,
-                        url=url,
-                        params=params,
-                        attempt=attempt,
-                        status_code=status_code,
-                        headers=headers,
-                        body=body,
-                        exception=None,
-                        retry_after_seconds=retry_after_seconds,
-                    )
-                    if attempt > self.config.max_retries:
-                        response.raise_for_status()
-                    self.retry_count += 1
-                    time.sleep(retry_after_seconds)
-                    continue
-
-                response.raise_for_status()
-                return response.json()
+                self._record_error(
+                    stage=stage,
+                    appid=appid,
+                    url=url,
+                    params=params,
+                    attempt=attempt,
+                    status_code=status_code,
+                    headers=headers,
+                    body=body,
+                    exception=exc,
+                    retry_after_seconds=retry_after_seconds,
+                )
+                if not should_retry:
+                    break
+                self.retry_count += 1
+                time.sleep(retry_after_seconds or 0)
             except (requests.RequestException, ValueError) as exc:
                 last_exception = exc
                 retry_after_seconds = None

@@ -17,16 +17,28 @@ def setup_logger(log_dir: Path) -> logging.Logger:
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-    if logger.handlers:
-        return logger
-
     formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    file_handler = logging.FileHandler(log_dir / "run.log", encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-    logger.addHandler(file_handler)
+    desired_log_path = (log_dir / "run.log").resolve()
+
+    has_stream_handler = any(
+        isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler)
+        for handler in logger.handlers
+    )
+    if not has_stream_handler:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        logger.addHandler(stream_handler)
+
+    existing_file_handlers = [handler for handler in logger.handlers if isinstance(handler, logging.FileHandler)]
+    file_handler_matches = any(Path(handler.baseFilename).resolve() == desired_log_path for handler in existing_file_handlers)
+    if not file_handler_matches:
+        for handler in existing_file_handlers:
+            logger.removeHandler(handler)
+            handler.close()
+        file_handler = logging.FileHandler(desired_log_path, encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
     return logger
 
 

@@ -111,6 +111,68 @@ class PipelineResumeTests(unittest.TestCase):
         resumed_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
         self.assertEqual([row["appid"] for row in resumed_rows], ["1", "2", "3"])
 
+    def test_stage_results_report_per_stage_retry_and_error_counts(self) -> None:
+        class CountingHttpClient(FakeHttpClient):
+            def get_json(self, url: str, *, stage: str, appid: int | None = None, params: dict[str, object] | None = None):
+                self.retry_count += 2
+                self.error_count += 3
+                return {
+                    "response": {
+                        "apps": [
+                            {
+                                "appid": 1,
+                                "name": "One",
+                                "last_modified": 0,
+                                "price_change_number": 0,
+                            }
+                        ],
+                        "have_more_results": False,
+                    }
+                }
+
+        counting_client = CountingHttpClient(lambda **_: {})
+        pipeline = Pipeline(self.build_config(), http_client=counting_client)
+        stage_01_result = pipeline.run_stage_01()
+        self.assertEqual(stage_01_result.retry_count, 2)
+        self.assertEqual(stage_01_result.error_count, 3)
+
+        write_csv(
+            self.root / "data" / "stage_01_apps_catalog.csv",
+            ["appid", "name", "last_modified", "price_change_number", "raw_json"],
+            [{"appid": 1, "name": "One", "last_modified": 0, "price_change_number": 0, "raw_json": "{}"}],
+        )
+        stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
+        stage_02_path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(stage_02_path, "wt", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "appid",
+                    "success",
+                    "type",
+                    "category_ids",
+                    "category_descriptions",
+                    "recommendations_total",
+                    "raw_json",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "appid": 1,
+                    "success": "True",
+                    "type": "game",
+                    "category_ids": "",
+                    "category_descriptions": "",
+                    "recommendations_total": "10000",
+                    "raw_json": "{}",
+                }
+            )
+
+        stage_03_result = pipeline.run_stage_03()
+        self.assertEqual(stage_03_result.retry_count, 0)
+        self.assertEqual(stage_03_result.error_count, 0)
+
     def test_stage_05_resumes_mid_game_without_duplicate_reviews(self) -> None:
         write_csv(
             self.root / "data" / "stage_04_selected_games.csv",

@@ -479,15 +479,25 @@ class Pipeline:
             state.status = "in_progress"
         return state, seen_ids
 
-    def _result(self, stage_name: str, output_path: Path, rows_written: int, skipped: bool, start: float) -> StageResult:
+    def _result(
+        self,
+        stage_name: str,
+        output_path: Path,
+        rows_written: int,
+        skipped: bool,
+        start: float,
+        *,
+        retry_count_start: int,
+        error_count_start: int,
+    ) -> StageResult:
         result = StageResult(
             stage_name=stage_name,
             output_path=output_path,
             rows_written=rows_written,
             skipped=skipped,
             elapsed_seconds=perf_counter() - start,
-            retry_count=self.http_client.retry_count,
-            error_count=self.http_client.error_count,
+            retry_count=self.http_client.retry_count - retry_count_start,
+            error_count=self.http_client.error_count - error_count_start,
         )
         self.logger.info(
             "%s summary | skipped=%s | rows=%s | elapsed=%.2fs | retries=%s | errors=%s | output=%s",
@@ -503,9 +513,19 @@ class Pipeline:
 
     def run_stage_01(self, *, force_refresh: bool = False, max_pages: int | None = None) -> StageResult:
         start = perf_counter()
+        retry_count_start = self.http_client.retry_count
+        error_count_start = self.http_client.error_count
         if self.stage_01_path.exists() and not force_refresh:
             self.logger.info("Reusing cached stage 01 output: %s", self.stage_01_path)
-            return self._result("stage_01", self.stage_01_path, _count_csv_rows(self.stage_01_path), True, start)
+            return self._result(
+                "stage_01",
+                self.stage_01_path,
+                _count_csv_rows(self.stage_01_path),
+                True,
+                start,
+                retry_count_start=retry_count_start,
+                error_count_start=error_count_start,
+            )
 
         if force_refresh and self.stage_01_path.exists():
             self.stage_01_path.unlink()
@@ -537,10 +557,20 @@ class Pipeline:
                 last_appid = payload.get("last_appid")
         finally:
             progress.close()
-        return self._result("stage_01", self.stage_01_path, rows_written, False, start)
+        return self._result(
+            "stage_01",
+            self.stage_01_path,
+            rows_written,
+            False,
+            start,
+            retry_count_start=retry_count_start,
+            error_count_start=error_count_start,
+        )
 
     def run_stage_02(self, *, force_refresh: bool = False, max_apps: int | None = None) -> StageResult:
         start = perf_counter()
+        retry_count_start = self.http_client.retry_count
+        error_count_start = self.http_client.error_count
         if not self.stage_01_path.exists():
             raise FileNotFoundError("Stage 01 output is required before running stage 02.")
 
@@ -553,7 +583,15 @@ class Pipeline:
         total_apps = _count_csv_rows(self.stage_01_path)
         if total_apps > 0 and len(completed_ids) >= total_apps and not force_refresh:
             self.logger.info("Reusing cached stage 02 output: %s", self.stage_02_path)
-            return self._result("stage_02", self.stage_02_path, _count_csv_rows(self.stage_02_path), True, start)
+            return self._result(
+                "stage_02",
+                self.stage_02_path,
+                _count_csv_rows(self.stage_02_path),
+                True,
+                start,
+                retry_count_start=retry_count_start,
+                error_count_start=error_count_start,
+            )
         apps_processed = 0
         progress = _progress_bar(total=total_apps, initial=len(completed_ids), desc="Stage 2 appdetails", unit="apps")
         try:
@@ -594,16 +632,34 @@ class Pipeline:
         finally:
             progress.close()
 
-        return self._result("stage_02", self.stage_02_path, _count_csv_rows(self.stage_02_path), False, start)
+        return self._result(
+            "stage_02",
+            self.stage_02_path,
+            _count_csv_rows(self.stage_02_path),
+            False,
+            start,
+            retry_count_start=retry_count_start,
+            error_count_start=error_count_start,
+        )
 
     def run_stage_03(self, *, force_refresh: bool = False, max_apps: int | None = None) -> StageResult:
         start = perf_counter()
+        retry_count_start = self.http_client.retry_count
+        error_count_start = self.http_client.error_count
         if not self.stage_01_path.exists() or not self.stage_02_path.exists():
             raise FileNotFoundError("Stages 01 and 02 outputs are required before running stage 03.")
 
         if self.stage_03_path.exists() and not force_refresh:
             self.logger.info("Reusing cached stage 03 output: %s", self.stage_03_path)
-            return self._result("stage_03", self.stage_03_path, _count_csv_rows(self.stage_03_path), True, start)
+            return self._result(
+                "stage_03",
+                self.stage_03_path,
+                _count_csv_rows(self.stage_03_path),
+                True,
+                start,
+                retry_count_start=retry_count_start,
+                error_count_start=error_count_start,
+            )
         if force_refresh and self.stage_03_path.exists():
             self.stage_03_path.unlink()
 
@@ -627,16 +683,34 @@ class Pipeline:
         if batch:
             rows_written += _write_rows(self.stage_03_path, STAGE_03_FIELDS, batch, append=self.stage_03_path.exists())
 
-        return self._result("stage_03", self.stage_03_path, rows_written, False, start)
+        return self._result(
+            "stage_03",
+            self.stage_03_path,
+            rows_written,
+            False,
+            start,
+            retry_count_start=retry_count_start,
+            error_count_start=error_count_start,
+        )
 
     def run_stage_04(self, *, force_refresh: bool = False, sample_size: int | None = None) -> StageResult:
         start = perf_counter()
+        retry_count_start = self.http_client.retry_count
+        error_count_start = self.http_client.error_count
         if not self.stage_03_path.exists():
             raise FileNotFoundError("Stage 03 output is required before running stage 04.")
 
         if self.stage_04_path.exists() and not force_refresh:
             self.logger.info("Reusing cached stage 04 output: %s", self.stage_04_path)
-            return self._result("stage_04", self.stage_04_path, _count_csv_rows(self.stage_04_path), True, start)
+            return self._result(
+                "stage_04",
+                self.stage_04_path,
+                _count_csv_rows(self.stage_04_path),
+                True,
+                start,
+                retry_count_start=retry_count_start,
+                error_count_start=error_count_start,
+            )
         if force_refresh and self.stage_04_path.exists():
             self.stage_04_path.unlink()
 
@@ -659,10 +733,20 @@ class Pipeline:
             enriched_rows.append(enriched)
 
         rows_written = _write_rows(self.stage_04_path, STAGE_04_FIELDS, enriched_rows)
-        return self._result("stage_04", self.stage_04_path, rows_written, False, start)
+        return self._result(
+            "stage_04",
+            self.stage_04_path,
+            rows_written,
+            False,
+            start,
+            retry_count_start=retry_count_start,
+            error_count_start=error_count_start,
+        )
 
     def run_stage_05(self, *, force_refresh: bool = False, max_games: int | None = None) -> StageResult:
         start = perf_counter()
+        retry_count_start = self.http_client.retry_count
+        error_count_start = self.http_client.error_count
         if not self.stage_04_path.exists():
             raise FileNotFoundError("Stage 04 output is required before running stage 05.")
 
@@ -687,7 +771,15 @@ class Pipeline:
             selected_games = selected_games[:max_games]
         if selected_games and initial_completed_count >= len(selected_games) and not force_refresh:
             self.logger.info("Reusing cached stage 05 output: %s", self.stage_05_path)
-            return self._result("stage_05", self.stage_05_path, _count_csv_rows(self.stage_05_path), True, start)
+            return self._result(
+                "stage_05",
+                self.stage_05_path,
+                _count_csv_rows(self.stage_05_path),
+                True,
+                start,
+                retry_count_start=retry_count_start,
+                error_count_start=error_count_start,
+            )
         outer_progress = _progress_bar(
             total=len(selected_games),
             initial=len(completed_ids),
@@ -749,7 +841,15 @@ class Pipeline:
         finally:
             outer_progress.close()
 
-        return self._result("stage_05", self.stage_05_path, _count_csv_rows(self.stage_05_path), False, start)
+        return self._result(
+            "stage_05",
+            self.stage_05_path,
+            _count_csv_rows(self.stage_05_path),
+            False,
+            start,
+            retry_count_start=retry_count_start,
+            error_count_start=error_count_start,
+        )
 
     def run_all_missing(
         self,
