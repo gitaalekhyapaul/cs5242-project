@@ -19,7 +19,7 @@ PROJECT_NAME="cs5242-project"
 echo "Activating environment: /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/env/bin/activate"
 source /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/env/bin/activate
 echo "Environment activated"
-echo "Current directory: $(pwd)"
+echo "Submitting from directory: $(pwd) [Is same as ${SLURM_SUBMIT_DIR}?]"
 cd "/home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/${PROJECT_NAME}"
 echo "Current directory: $(pwd)"
 # Interactive Jupyter remains available as an opt-in path if you need to reverse tunnel into the node.
@@ -34,4 +34,4 @@ echo "Current directory: $(pwd)"
     # --output steam_crawler.executed.ipynb
 
 # Run the crawler notebook headlessly
-python run_notebook.py --run-mode smoke --stage all
+python steam-crawler/run_notebook.py --run-mode smoke --stage all
