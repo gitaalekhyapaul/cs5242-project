@@ -35,8 +35,11 @@ echo "Sanity Checks Complete"
 # jupyter lab --no-browser --ip=0.0.0.0 --port=$PORT --ServerApp.token=$TOKEN --ServerApp.allow_origin='*'
 
 # Default batch path: execute the crawler notebook headlessly and persist the executed notebook artifact.
-    jupyter nbconvert \
-    --to notebook \
-    --execute notebooks/steam_crawler.ipynb \
-    --ExecutePreprocessor.timeout=-1 \
-    --output steam_crawler.executed.ipynb
+    # jupyter nbconvert \
+    # --to notebook \
+    # --execute notebooks/steam_crawler.ipynb \
+    # --ExecutePreprocessor.timeout=-1 \
+    # --output steam_crawler.executed.ipynb
+
+# Run the crawler notebook headlessly
+python run_notebook.py --run-mode smoke --stage all
