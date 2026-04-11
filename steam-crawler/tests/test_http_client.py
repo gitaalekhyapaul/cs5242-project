@@ -98,6 +98,16 @@ class RetryDelayTests(unittest.TestCase):
         )
         self.assertEqual(delay, 4.0)
 
+    def test_compute_backoff_adds_gap_before_exponential_fallback(self) -> None:
+        delay = compute_backoff_delay(
+            attempt=2,
+            base_delay=1.0,
+            max_delay=60.0,
+            gap_delay=300.0,
+            headers={},
+        )
+        self.assertEqual(delay, 302.0)
+
     def test_compute_backoff_caps_deterministic_exponential_fallback(self) -> None:
         delay = compute_backoff_delay(
             attempt=8,
@@ -106,6 +116,16 @@ class RetryDelayTests(unittest.TestCase):
             headers={},
         )
         self.assertEqual(delay, 60.0)
+
+    def test_compute_backoff_retry_after_still_beats_gap_delay(self) -> None:
+        delay = compute_backoff_delay(
+            attempt=1,
+            base_delay=1.0,
+            max_delay=60.0,
+            gap_delay=300.0,
+            headers={"Retry-After": "7"},
+        )
+        self.assertEqual(delay, 7.0)
 
 
 class HttpClientErrorHandlingTests(unittest.TestCase):

@@ -55,6 +55,7 @@ def compute_backoff_delay(
     attempt: int,
     base_delay: float,
     max_delay: float,
+    gap_delay: float = 0.0,
     headers: dict[str, str] | None = None,
     now: datetime | None = None,
 ) -> float:
@@ -62,7 +63,8 @@ def compute_backoff_delay(
     if hinted_delay is not None:
         return min(max_delay, hinted_delay)
 
-    return min(max_delay, base_delay * (2 ** max(0, attempt - 1)))
+    exponential_delay = min(max_delay, base_delay * (2 ** max(0, attempt - 1)))
+    return max(0.0, gap_delay) + exponential_delay
 
 
 class HttpClient:
@@ -209,6 +211,11 @@ class HttpClient:
                         attempt=attempt,
                         base_delay=self.config.base_backoff_sec,
                         max_delay=self.config.max_backoff_sec,
+                        gap_delay=(
+                            self.config.rate_limit_gap_delay_sec
+                            if status_code == 429
+                            else 0.0
+                        ),
                         headers=headers,
                     )
                 self._record_error(
@@ -235,6 +242,7 @@ class HttpClient:
                         attempt=attempt,
                         base_delay=self.config.base_backoff_sec,
                         max_delay=self.config.max_backoff_sec,
+                        gap_delay=0.0,
                         headers=headers,
                     )
                 self._record_error(

@@ -12,11 +12,13 @@
   5. `stage_05_reviews_dataset.csv.gz`
 - Stage 4 will sample up to 10,000 games where `recommendations_total > 5000`, using a fixed seed for reproducibility.
 - Stage 5 will pull 1,000 reviews per selected game as `500 recent + 500 helpful`, deduplicated by `recommendationid` with backfill until 1,000 unique reviews or exhaustion.
-- The production runtime now targets the proxy bases `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore` rather than the original Steam hosts.
+- The production runtime defaults to the proxy bases `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`, but can switch back to the original Steam hosts when `STEAM_ENDPOINT_MODE=direct` is set. If both env and CLI endpoint mode are set, the env var wins.
 
 ## Interfaces
 - Config can come from notebook cells, `run_notebook.py`, or env vars:
-  `STEAM_API_KEY`, `sample_size=10000`, `min_recommendations=5000`, `reviews_per_game=1000`, `recent_quota=500`, `helpful_quota=500`, `random_seed=5242`, `request_timeout_sec`, `max_retries`, `base_backoff_sec`, `max_backoff_sec`.
+  `STEAM_API_KEY`, `STEAM_ENDPOINT_MODE`, `sample_size=10000`, `min_recommendations=5000`, `reviews_per_game=1000`, `recent_quota=500`, `helpful_quota=500`, `random_seed=5242`, `request_timeout_sec`, `max_retries`, `base_backoff_sec`, `max_backoff_sec`.
+- Endpoint mode values:
+  `proxy` for `gpaul.cc` routing, `direct` for the original Steam hosts. `run_notebook.py` and `python -m steam_crawler.pipeline` also accept `--endpoint-mode {proxy,direct}`, but `STEAM_ENDPOINT_MODE` takes priority when both are present.
 - Stage 1 CSV schema:
   `appid`, `name`, `last_modified`, `price_change_number`, `raw_json`.
 - Stage 2 CSV schema:
@@ -32,17 +34,17 @@
 
 ## Implementation
 - HTTP client:
-  use one shared session with explicit `User-Agent`, sane timeouts, and per-endpoint throttling. Retry on network errors and `429/500/502/503/504`; non-retryable HTTP errors should fail immediately after one logged attempt. On `429`, first honor `Retry-After` if present as seconds or HTTP date; then check similar headers if any appear; otherwise fall back to deterministic exponential backoff starting at `2^0 = 1` second and doubling per retry, capped by `max_backoff_sec`. Every failed response must be logged with full headers and body to both the run logger and `logs/errors.csv`.
+  use one shared session with explicit `User-Agent`, sane timeouts, and per-endpoint throttling. Retry on network errors and `429/500/502/503/504`; non-retryable HTTP errors should fail immediately after one logged attempt. On `429`, first honor `Retry-After` if present as seconds or HTTP date; then check similar headers if any appear; otherwise apply a fixed `rate_limit_gap_delay_sec` cooling-off gap before the deterministic exponential backoff component (`2^0 = 1` second doubling per retry, capped by `max_backoff_sec`). Every failed response must be logged with full headers and body to both the run logger and `logs/errors.csv`.
 - Stage 1:
-  call `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/` with `max_results=5000`, follow `have_more_results` and `last_appid`, and write one row per app. Resume by skipping this stage if the CSV already exists, unless the user forces a refresh.
+  call the configured app-list endpoint with `max_results=5000`, follow `have_more_results` and `last_appid`, and write one row per app. In `proxy` mode this is `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/`; in `direct` mode this is `https://api.steampowered.com/IStoreService/GetAppList/v1/`. Resume by skipping this stage if the CSV already exists, unless the user forces a refresh.
 - Stage 2:
-  read Stage 1 and fetch appdetails one app at a time from `https://gpaul.cc/steamstore/api/appdetails` using `cc=us` and `l=english` for stable category text. Persist after every successful app so reruns can skip completed `appid`s. Store minified raw JSON in the CSV; flatten categories as pipe-separated IDs and descriptions.
+  read Stage 1 and fetch appdetails one app at a time from the configured store appdetails endpoint using `cc=us` and `l=english` for stable category text. In `proxy` mode this is `https://gpaul.cc/steamstore/api/appdetails`; in `direct` mode this is `https://store.steampowered.com/api/appdetails`. Persist after every successful app so reruns can skip completed `appid`s. Store minified raw JSON in the CSV; flatten categories as pipe-separated IDs and descriptions.
 - Stage 3:
   merge Stage 1 and Stage 2 into one metadata CSV, set `eligible_for_sampling = success && type == "game" && recommendations_total > 5000`, and keep both raw columns from the prior stages so this file is the canonical input for sampling.
 - Stage 4:
   load Stage 3, filter eligible rows, sample without replacement using the fixed seed, and select `min(10000, eligible_count)` rows. Output a stable `sample_rank` so later reruns preserve order.
 - Stage 5:
-  for each sampled game, first page `filter=recent` until 500 unique review IDs or exhaustion; then page `filter=all&day_range=365` for helpful reviews until 500 additional unique reviews or exhaustion; if overlap leaves the total below 1,000, keep paging the helpful stream first, then recent, until 1,000 unique rows or both streams stop yielding new reviews. Use `language=all`, `review_type=all`, `purchase_type=all`, `num_per_page=100`, and keep the default off-topic filtering against `https://gpaul.cc/steamstore/appreviews/{appid}`. Track per-app progress in `stage_05_progress.csv` so interruption does not require rereading the full review dataset. Unexpected exceptions should still persist a terminal `failed` progress row before being re-raised.
+  for each sampled game, first page `filter=recent` until 500 unique review IDs or exhaustion; then page `filter=all&day_range=365` for helpful reviews until 500 additional unique reviews or exhaustion; if overlap leaves the total below 1,000, keep paging the helpful stream first, then recent, until 1,000 unique rows or both streams stop yielding new reviews. Use `language=all`, `review_type=all`, `purchase_type=all`, `num_per_page=100`, and keep the default off-topic filtering against the configured reviews endpoint. In `proxy` mode this is `https://gpaul.cc/steamstore/appreviews/{appid}`; in `direct` mode this is `https://store.steampowered.com/appreviews/{appid}`. Track per-app progress in `stage_05_progress.csv` so interruption does not require rereading the full review dataset. Unexpected exceptions should still persist a terminal `failed` progress row before being re-raised.
 
 ## Notebook Behavior
 - The notebook should have one runnable section per stage plus one “run all missing stages” section. `run_notebook.py` should expose the same stage selection and smoke/full profile behavior for terminal execution.
@@ -71,4 +73,5 @@
 - Source references used for the plan:
   [Steamworks IStoreService GetAppList docs](https://partner.steamgames.com/doc/webapi/IStoreService),
   [Steamworks User Reviews docs](https://partner.steamgames.com/doc/store/getreviews?l=english&language=english),
-  [live appdetails shape check](https://gpaul.cc/steamstore/api/appdetails?appids=10&filters=categories,recommendations,type).
+  [proxy appdetails shape check](https://gpaul.cc/steamstore/api/appdetails?appids=10&filters=categories,recommendations,type),
+  [direct appdetails shape check](https://store.steampowered.com/api/appdetails?appids=10&filters=categories,recommendations,type).

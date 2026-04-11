@@ -24,11 +24,6 @@ from .transforms import (
     utc_timestamp,
 )
 
-
-APP_LIST_URL = "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"
-APP_DETAILS_URL = "https://gpaul.cc/steamstore/api/appdetails"
-APP_REVIEWS_URL_TEMPLATE = "https://gpaul.cc/steamstore/appreviews/{appid}"
-
 STAGE_01_FIELDS = ["appid", "name", "last_modified", "price_change_number", "raw_json"]
 STAGE_02_FIELDS = [
     "appid",
@@ -269,7 +264,7 @@ class ReviewCollector:
         if day_range is not None:
             params["day_range"] = day_range
         return self.http_client.get_json(
-            APP_REVIEWS_URL_TEMPLATE.format(appid=appid),
+            self.config.app_reviews_url(appid),
             stage="stage_05",
             appid=appid,
             params=params,
@@ -545,7 +540,7 @@ class Pipeline:
                 }
                 if last_appid is not None:
                     params["last_appid"] = last_appid
-                response = self.http_client.get_json(APP_LIST_URL, stage="stage_01", params=params)
+                response = self.http_client.get_json(self.config.app_list_url, stage="stage_01", params=params)
                 payload = response.get("response", {})
                 apps = payload.get("apps", [])
                 rows = [flatten_app_catalog_row(app) for app in apps]
@@ -614,7 +609,7 @@ class Pipeline:
                 try:
                     # Persist rows incrementally so reruns only retry the missing appids.
                     payload = self.http_client.get_json(
-                        APP_DETAILS_URL,
+                        self.config.app_details_url,
                         stage="stage_02",
                         appid=appid,
                         params=params,
@@ -888,10 +883,22 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default="all",
         help="Which stage to run.",
     )
+    parser.add_argument(
+        "--endpoint-mode",
+        choices=["proxy", "direct"],
+        default=None,
+        help="Endpoint mode. Ignored when STEAM_ENDPOINT_MODE is set in the environment or .env.",
+    )
     parser.add_argument("--max-pages", type=int, default=None, help="Optional smoke-test limit for stage 1 page count.")
     parser.add_argument("--max-apps", type=int, default=None, help="Optional smoke-test limit for stage 2/3 app count.")
     parser.add_argument("--sample-size", type=int, default=None, help="Optional sample-size override for stage 4.")
     parser.add_argument("--max-games", type=int, default=None, help="Optional smoke-test limit for stage 5 game count.")
+    parser.add_argument(
+        "--gap-delay",
+        type=float,
+        default=None,
+        help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
+    )
     parser.add_argument("--force-refresh", action="store_true", help="Ignore cached outputs for the selected stage.")
     return parser
 
@@ -899,7 +906,10 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
-    config = Config.from_env(args.root)
+    config_overrides: dict[str, object] = {"endpoint_mode": args.endpoint_mode}
+    if args.gap_delay is not None:
+        config_overrides["rate_limit_gap_delay_sec"] = args.gap_delay
+    config = Config.from_env(args.root, **config_overrides)
     pipeline = Pipeline(config)
     dispatch = {
         "stage1": lambda: pipeline.run_stage_01(force_refresh=args.force_refresh, max_pages=args.max_pages),

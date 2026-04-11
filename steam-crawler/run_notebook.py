@@ -23,7 +23,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from steam_crawler import Config, Pipeline
-from steam_crawler.pipeline import APP_DETAILS_URL, APP_LIST_URL
+from steam_crawler.config import resolve_endpoint_mode
 
 
 PREFLIGHT_TIMEOUT_SEC = 30
@@ -39,6 +39,7 @@ FULL_CONFIG = {
     "max_retries": 10,
     "base_backoff_sec": 1.0,
     "max_backoff_sec": 120.0,
+    "rate_limit_gap_delay_sec": 300.0,
     "app_list_page_size": 5_000,
 }
 
@@ -53,6 +54,7 @@ SMOKE_CONFIG = {
     "max_retries": 10,
     "base_backoff_sec": 1.0,
     "max_backoff_sec": 120.0,
+    "rate_limit_gap_delay_sec": 300.0,
     "app_list_page_size": 25,
 }
 
@@ -141,7 +143,7 @@ def print_system_preflight() -> None:
         print(gpu_result.stderr.strip())
 
 
-def run_preflight(root_dir: Path) -> None:
+def run_preflight(root_dir: Path, *, endpoint_mode: str) -> None:
     load_project_env(root_dir)
     print_system_preflight()
 
@@ -150,10 +152,11 @@ def run_preflight(root_dir: Path) -> None:
         raise RuntimeError(
             "STEAM_API_KEY is missing. Set it in the environment or in steam-crawler/.env before running."
         )
+    preflight_config = Config.from_env(root_dir, steam_api_key=steam_api_key, endpoint_mode=endpoint_mode)
 
     preflight_payload = fetch_preflight_json(
         "Steam API preflight",
-        APP_LIST_URL,
+        preflight_config.app_list_url,
         params={"key": steam_api_key, "max_results": 1},
     )
     apps = preflight_payload.get("response", {}).get("apps", [])
@@ -165,7 +168,7 @@ def run_preflight(root_dir: Path) -> None:
 
     appdetails_payload = fetch_preflight_json(
         "Steam appdetails preflight",
-        APP_DETAILS_URL,
+        preflight_config.app_details_url,
         params={"appids": 10, "cc": "us", "l": "english", "filters": "basic"},
     )
     appdetails_entry = (
@@ -203,6 +206,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Execution profile. Overrides STEAM_RUN_MODE from the environment or steam-crawler/.env.",
     )
     parser.add_argument(
+        "--endpoint-mode",
+        choices=["proxy", "direct"],
+        default=None,
+        help="Endpoint mode. Ignored when STEAM_ENDPOINT_MODE is set in the environment or .env.",
+    )
+    parser.add_argument(
         "--stage",
         choices=["stage1", "stage2", "stage3", "stage4", "stage5", "all"],
         default="all",
@@ -231,6 +240,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="Optional override for the stage 5 game limit.",
+    )
+    parser.add_argument(
+        "--gap-delay",
+        type=float,
+        default=None,
+        help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
     )
     parser.add_argument(
         "--force-refresh",
@@ -305,9 +320,10 @@ def main() -> int:
     root_dir = args.root.resolve()
     load_project_env(root_dir)
     run_mode = resolve_run_mode(args.run_mode)
+    endpoint_mode = resolve_endpoint_mode(args.endpoint_mode)
 
     if not args.skip_preflight:
-        run_preflight(root_dir)
+        run_preflight(root_dir, endpoint_mode=endpoint_mode)
 
     active_config, active_limits = build_active_config(run_mode)
     active_limits = apply_limit_overrides(
@@ -317,11 +333,14 @@ def main() -> int:
         sample_size=args.sample_size,
         max_games=args.max_games,
     )
+    if args.gap_delay is not None:
+        active_config["rate_limit_gap_delay_sec"] = args.gap_delay
 
-    settings = Config.from_env(root_dir, **active_config)
+    settings = Config.from_env(root_dir, endpoint_mode=endpoint_mode, **active_config)
     pipeline = Pipeline(settings)
 
     print(f"Run mode: {run_mode}")
+    print(f"Endpoint mode: {settings.endpoint_mode}")
     print(f"Stage limits: {active_limits}")
 
     result = run_selected_stage(

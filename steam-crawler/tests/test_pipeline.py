@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -110,6 +111,32 @@ class PipelineResumeTests(unittest.TestCase):
         pipeline.run_stage_02()
         resumed_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
         self.assertEqual([row["appid"] for row in resumed_rows], ["1", "2", "3"])
+
+    def test_config_from_env_prefers_endpoint_mode_env_over_override(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}):
+            config = Config.from_env(self.root, endpoint_mode="proxy")
+        self.assertEqual(config.endpoint_mode, "direct")
+        self.assertEqual(config.app_list_url, "https://api.steampowered.com/IStoreService/GetAppList/v1/")
+        self.assertEqual(config.app_details_url, "https://store.steampowered.com/api/appdetails")
+
+    def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
+        seen_urls: list[str] = []
+
+        def stage_01_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            seen_urls.append(url)
+            return {
+                "response": {
+                    "apps": [],
+                    "have_more_results": False,
+                }
+            }
+
+        pipeline = Pipeline(
+            self.build_config(endpoint_mode="direct"),
+            http_client=FakeHttpClient(stage_01_handler),
+        )
+        pipeline.run_stage_01(force_refresh=True, max_pages=1)
+        self.assertEqual(seen_urls, ["https://api.steampowered.com/IStoreService/GetAppList/v1/"])
 
     def test_stage_results_report_per_stage_retry_and_error_counts(self) -> None:
         class CountingHttpClient(FakeHttpClient):

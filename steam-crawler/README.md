@@ -14,10 +14,16 @@ The implementation is intentionally split between reusable Python classes in `sr
 
 The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, the notebook-equivalent terminal runner, resume behavior, and test coverage.
 
-All crawler traffic is routed through the configured proxy bases:
+By default, crawler traffic is routed through the configured proxy bases:
 
 - `https://gpaul.cc/steamapi`
 - `https://gpaul.cc/steamstore`
+
+You can switch back to the original Steam hosts with endpoint mode:
+
+- `STEAM_ENDPOINT_MODE=proxy` keeps the default proxy routing
+- `STEAM_ENDPOINT_MODE=direct` uses `https://api.steampowered.com` and `https://store.steampowered.com`
+- `--endpoint-mode {proxy,direct}` is available on both terminal runners, but `STEAM_ENDPOINT_MODE` wins if both are set
 
 The test suite now has two layers:
 
@@ -35,11 +41,11 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 
 ### Stage flow
 
-1. Stage 1 fetches the Steam app list from `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/` and writes `data/stage_01_apps_catalog.csv`.
-2. Stage 2 fetches `appdetails` per app from `https://gpaul.cc/steamstore/api/appdetails` and writes `data/stage_02_app_details.csv.gz`.
+1. Stage 1 fetches the Steam app list from the configured app-list base (`gpaul.cc` proxy by default, original Steam API in `direct` mode) and writes `data/stage_01_apps_catalog.csv`.
+2. Stage 2 fetches `appdetails` per app from the configured store base (`gpaul.cc` proxy by default, original Steam store host in `direct` mode) and writes `data/stage_02_app_details.csv.gz`.
 3. Stage 3 merges the catalog and metadata into `data/stage_03_apps_with_metadata.csv.gz`.
 4. Stage 4 samples eligible games into `data/stage_04_selected_games.csv`.
-5. Stage 5 fetches reviews for the sampled games from `https://gpaul.cc/steamstore/appreviews/{appid}` into `data/stage_05_reviews_dataset.csv.gz`.
+5. Stage 5 fetches reviews for the sampled games from the configured reviews base into `data/stage_05_reviews_dataset.csv.gz`.
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
 
@@ -109,6 +115,7 @@ The package is intentionally split by responsibility instead of putting all craw
 - `Retry-After` is honored first when present.
 - Similar reset/retry headers are inspected if `Retry-After` is absent.
 - Otherwise the client falls back to deterministic exponential backoff starting at `2^0 = 1` second and doubling per retry, capped by `max_backoff_sec`.
+- For `429` responses without a usable server retry hint, the client now adds a fixed `rate_limit_gap_delay_sec` before the exponential component. With the current default, that means a 5-minute cooling-off gap plus `1, 2, 4, ...` seconds across retries.
 - Warning logs include the exception summary, so timeout/socket failures are visible in `run.log` without opening `errors.csv`.
 - `run.log` is rebound to the active `log_dir` when a run uses a different workspace.
 - Stage summaries report stage-local retry and error counts instead of cumulative lifetime totals.
@@ -184,6 +191,14 @@ The notebook and `run_notebook.py` are profile-driven:
 - `STEAM_RUN_MODE=smoke`: small-batch validation
 - `STEAM_RUN_MODE=full`: full crawl for cluster execution
 
+Endpoint selection is also environment-driven:
+
+- `STEAM_ENDPOINT_MODE=proxy`: default, uses `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`
+- `STEAM_ENDPOINT_MODE=direct`: uses `https://api.steampowered.com` and `https://store.steampowered.com`
+
+For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. If the env var is set, it takes priority over the CLI flag.
+Both terminal entrypoints also accept `--gap-delay <seconds>` to override the `429` cooling-off gap without editing the profile config.
+
 The notebook uses two profiles:
 
 - Smoke profile:
@@ -207,6 +222,7 @@ Additional configuration knobs exposed through the package config include:
 - `max_retries`
 - `base_backoff_sec`
 - `max_backoff_sec`
+- `rate_limit_gap_delay_sec`
 - `appdetails_country_code`
 - `appdetails_language`
 - `reviews_language`
@@ -215,11 +231,16 @@ Additional configuration knobs exposed through the package config include:
 - `store_host_delay_sec`
 - `default_host_delay_sec`
 
-The proxy endpoints are hard-coded in the runtime package:
+The runtime resolves endpoints from `endpoint_mode`:
 
-- app list: `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/`
-- app details: `https://gpaul.cc/steamstore/api/appdetails`
-- app reviews: `https://gpaul.cc/steamstore/appreviews/{appid}`
+- `proxy` mode:
+  - app list: `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/`
+  - app details: `https://gpaul.cc/steamstore/api/appdetails`
+  - app reviews: `https://gpaul.cc/steamstore/appreviews/{appid}`
+- `direct` mode:
+  - app list: `https://api.steampowered.com/IStoreService/GetAppList/v1/`
+  - app details: `https://store.steampowered.com/api/appdetails`
+  - app reviews: `https://store.steampowered.com/appreviews/{appid}`
 
 ## How to test locally in small batches
 
@@ -306,6 +327,18 @@ cd steam-crawler
 STEAM_API_KEY=... .venv/bin/python run_notebook.py --run-mode smoke --stage all
 ```
 
+Switch to the original Steam hosts for that run with either:
+
+```bash
+STEAM_API_KEY=... STEAM_ENDPOINT_MODE=direct .venv/bin/python run_notebook.py --run-mode smoke --stage all
+```
+
+or, if `STEAM_ENDPOINT_MODE` is unset:
+
+```bash
+STEAM_API_KEY=... .venv/bin/python run_notebook.py --run-mode smoke --endpoint-mode direct --stage all
+```
+
 You can also run a single stage with the same smoke defaults:
 
 ```bash
@@ -332,6 +365,8 @@ Or run all bounded smoke stages at once:
 cd steam-crawler
 STEAM_API_KEY=... .venv/bin/python -m steam_crawler.pipeline --stage all --max-pages 1 --max-apps 25 --sample-size 5 --max-games 2
 ```
+
+You can add `--endpoint-mode direct` to either CLI, but the env var still has higher priority when both are set.
 
 ## Running the full crawl
 
@@ -387,6 +422,11 @@ For the full cluster run, make sure your cluster-side [`steam-crawler/.env`](/Us
 
 - `STEAM_API_KEY=...`
 - `STEAM_RUN_MODE=full`
+
+Optionally add one of:
+
+- `STEAM_ENDPOINT_MODE=proxy`
+- `STEAM_ENDPOINT_MODE=direct`
 
 ## Architecture and execution model
 
