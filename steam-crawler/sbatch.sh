@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=8
 ##SBATCH --gres=gpu:a100-40:1
 #SBATCH --mem=64G
-#SBATCH --partition=long
+#SBATCH --partition=normal
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=gapaul@comp.nus.edu.sg
 
