@@ -108,7 +108,7 @@ The package is intentionally split by responsibility instead of putting all craw
 - Non-retryable HTTP statuses fail immediately after the first logged attempt.
 - `Retry-After` is honored first when present.
 - Similar reset/retry headers are inspected if `Retry-After` is absent.
-- Otherwise the client falls back to capped exponential backoff with jitter.
+- Otherwise the client falls back to deterministic exponential backoff starting at `2^0 = 1` second and doubling per retry, capped by `max_backoff_sec`.
 - Warning logs include the exception summary, so timeout/socket failures are visible in `run.log` without opening `errors.csv`.
 - `run.log` is rebound to the active `log_dir` when a run uses a different workspace.
 - Stage summaries report stage-local retry and error counts instead of cumulative lifetime totals.

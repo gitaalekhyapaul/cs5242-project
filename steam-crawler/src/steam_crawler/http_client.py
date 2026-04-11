@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -57,16 +56,13 @@ def compute_backoff_delay(
     base_delay: float,
     max_delay: float,
     headers: dict[str, str] | None = None,
-    rng: random.Random | None = None,
     now: datetime | None = None,
 ) -> float:
     hinted_delay = parse_retry_after(headers or {}, now=now)
     if hinted_delay is not None:
         return min(max_delay, hinted_delay)
 
-    random_source = rng or random.Random()
-    raw_delay = min(max_delay, base_delay * (2 ** max(0, attempt - 1)))
-    return random_source.uniform(0.0, raw_delay)
+    return min(max_delay, base_delay * (2 ** max(0, attempt - 1)))
 
 
 class HttpClient:
@@ -93,7 +89,6 @@ class HttpClient:
         self.retry_count = 0
         self.error_count = 0
         self._last_request_at: dict[str, float] = {}
-        self._rng = random.Random(config.random_seed)
 
     def _request_bucket(self, url: str) -> str:
         parsed = urlparse(url)
@@ -215,7 +210,6 @@ class HttpClient:
                         base_delay=self.config.base_backoff_sec,
                         max_delay=self.config.max_backoff_sec,
                         headers=headers,
-                        rng=self._rng,
                     )
                 self._record_error(
                     stage=stage,
@@ -242,7 +236,6 @@ class HttpClient:
                         base_delay=self.config.base_backoff_sec,
                         max_delay=self.config.max_backoff_sec,
                         headers=headers,
-                        rng=self._rng,
                     )
                 self._record_error(
                     stage=stage,

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import sys
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -90,16 +89,23 @@ class RetryDelayTests(unittest.TestCase):
         delay = parse_retry_after({"X-RateLimit-Reset": str(future_epoch)}, now=now)
         self.assertEqual(delay, 45.0)
 
-    def test_compute_backoff_uses_jitter_without_headers(self) -> None:
+    def test_compute_backoff_uses_deterministic_exponential_fallback(self) -> None:
         delay = compute_backoff_delay(
             attempt=3,
-            base_delay=2.0,
+            base_delay=1.0,
             max_delay=60.0,
             headers={},
-            rng=random.Random(0),
         )
-        self.assertGreaterEqual(delay, 0.0)
-        self.assertLessEqual(delay, 8.0)
+        self.assertEqual(delay, 4.0)
+
+    def test_compute_backoff_caps_deterministic_exponential_fallback(self) -> None:
+        delay = compute_backoff_delay(
+            attempt=8,
+            base_delay=1.0,
+            max_delay=60.0,
+            headers={},
+        )
+        self.assertEqual(delay, 60.0)
 
 
 class HttpClientErrorHandlingTests(unittest.TestCase):

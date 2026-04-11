@@ -36,9 +36,9 @@ FULL_CONFIG = {
     "helpful_quota": 500,
     "random_seed": 5242,
     "request_timeout_sec": 30.0,
-    "max_retries": 5,
+    "max_retries": 10,
     "base_backoff_sec": 1.0,
-    "max_backoff_sec": 60.0,
+    "max_backoff_sec": 120.0,
     "app_list_page_size": 50_000,
 }
 
@@ -50,13 +50,18 @@ SMOKE_CONFIG = {
     "helpful_quota": 10,
     "random_seed": 5242,
     "request_timeout_sec": 30.0,
-    "max_retries": 5,
+    "max_retries": 10,
     "base_backoff_sec": 1.0,
-    "max_backoff_sec": 60.0,
+    "max_backoff_sec": 120.0,
     "app_list_page_size": 25,
 }
 
-FULL_LIMITS = {"max_pages": None, "max_apps": None, "sample_size": None, "max_games": None}
+FULL_LIMITS = {
+    "max_pages": None,
+    "max_apps": None,
+    "sample_size": None,
+    "max_games": None,
+}
 SMOKE_LIMITS = {"max_pages": 1, "max_apps": 25, "sample_size": 5, "max_games": 2}
 
 
@@ -67,7 +72,9 @@ def load_project_env(root_dir: Path) -> None:
 def resolve_run_mode(cli_value: str | None) -> str:
     run_mode = (cli_value or os.getenv("STEAM_RUN_MODE", "smoke")).strip().lower()
     if run_mode not in {"smoke", "full"}:
-        raise ValueError(f"Invalid STEAM_RUN_MODE: {run_mode!r}. Expected 'smoke' or 'full'.")
+        raise ValueError(
+            f"Invalid STEAM_RUN_MODE: {run_mode!r}. Expected 'smoke' or 'full'."
+        )
     return run_mode
 
 
@@ -87,16 +94,24 @@ def fetch_preflight_json(label: str, url: str, *, params: dict[str, object]) -> 
         return response.json()
     except ValueError as exc:
         response_preview = response.text.strip()[:200]
-        raise RuntimeError(f"{label} returned invalid JSON. Response preview: {response_preview!r}") from exc
+        raise RuntimeError(
+            f"{label} returned invalid JSON. Response preview: {response_preview!r}"
+        ) from exc
 
 
 def print_system_preflight() -> None:
     hostname = socket.gethostname()
-    available_cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
+    available_cpus = (
+        len(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else os.cpu_count()
+    )
     print(f"Hostname: {hostname}")
     print(f"Available CPUs: {available_cpus}")
     if psutil is None:
-        print("RAM check: psutil not installed in this Python environment; skipping memory probe.")
+        print(
+            "RAM check: psutil not installed in this Python environment; skipping memory probe."
+        )
     else:
         memory = psutil.virtual_memory()
         print(f"Total RAM (GiB): {memory.total / (1024 ** 3):.2f}")
@@ -112,7 +127,9 @@ def print_system_preflight() -> None:
         "--query-gpu=index,name,driver_version,memory.total,compute_cap",
         "--format=csv,noheader",
     ]
-    gpu_result = subprocess.run(gpu_command, capture_output=True, text=True, check=False)
+    gpu_result = subprocess.run(
+        gpu_command, capture_output=True, text=True, check=False
+    )
     if gpu_result.returncode == 0 and gpu_result.stdout.strip():
         print("NVIDIA GPUs:")
         for line in gpu_result.stdout.strip().splitlines():
@@ -141,7 +158,9 @@ def run_preflight(root_dir: Path) -> None:
     )
     apps = preflight_payload.get("response", {}).get("apps", [])
     if not isinstance(apps, list):
-        raise RuntimeError(f"Steam API preflight returned an unexpected payload: {preflight_payload}")
+        raise RuntimeError(
+            f"Steam API preflight returned an unexpected payload: {preflight_payload}"
+        )
     print(f"Steam API preflight succeeded with {len(apps)} sample app(s).")
 
     appdetails_payload = fetch_preflight_json(
@@ -149,13 +168,19 @@ def run_preflight(root_dir: Path) -> None:
         APP_DETAILS_URL,
         params={"appids": 10, "cc": "us", "l": "english", "filters": "basic"},
     )
-    appdetails_entry = appdetails_payload.get("10", {}) if isinstance(appdetails_payload, dict) else {}
+    appdetails_entry = (
+        appdetails_payload.get("10", {}) if isinstance(appdetails_payload, dict) else {}
+    )
     if not isinstance(appdetails_entry, dict) or not appdetails_entry.get("success"):
-        raise RuntimeError(f"Steam appdetails preflight returned an unexpected payload: {appdetails_payload}")
+        raise RuntimeError(
+            f"Steam appdetails preflight returned an unexpected payload: {appdetails_payload}"
+        )
     print("Steam appdetails preflight succeeded for app 10.")
 
 
-def build_active_config(run_mode: str) -> tuple[dict[str, object], dict[str, int | None]]:
+def build_active_config(
+    run_mode: str,
+) -> tuple[dict[str, object], dict[str, int | None]]:
     if run_mode == "smoke":
         return dict(SMOKE_CONFIG), dict(SMOKE_LIMITS)
     return dict(FULL_CONFIG), dict(FULL_LIMITS)
@@ -183,17 +208,40 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default="all",
         help="Stage to run. The default mirrors running the notebook end-to-end.",
     )
-    parser.add_argument("--max-pages", type=int, default=None, help="Optional override for the stage 1 page limit.")
-    parser.add_argument("--max-apps", type=int, default=None, help="Optional override for the stage 2/3 app limit.")
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Optional override for the stage 1 page limit.",
+    )
+    parser.add_argument(
+        "--max-apps",
+        type=int,
+        default=None,
+        help="Optional override for the stage 2/3 app limit.",
+    )
     parser.add_argument(
         "--sample-size",
         type=int,
         default=None,
         help="Optional override for the stage 4 sample size.",
     )
-    parser.add_argument("--max-games", type=int, default=None, help="Optional override for the stage 5 game limit.")
-    parser.add_argument("--force-refresh", action="store_true", help="Ignore cached outputs for the selected stage.")
-    parser.add_argument("--skip-preflight", action="store_true", help="Skip the Steam/system preflight checks.")
+    parser.add_argument(
+        "--max-games",
+        type=int,
+        default=None,
+        help="Optional override for the stage 5 game limit.",
+    )
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore cached outputs for the selected stage.",
+    )
+    parser.add_argument(
+        "--skip-preflight",
+        action="store_true",
+        help="Skip the Steam/system preflight checks.",
+    )
     return parser
 
 
@@ -225,11 +273,21 @@ def run_selected_stage(
     limits: dict[str, int | None],
 ) -> object:
     dispatch = {
-        "stage1": lambda: pipeline.run_stage_01(force_refresh=force_refresh, max_pages=limits["max_pages"]),
-        "stage2": lambda: pipeline.run_stage_02(force_refresh=force_refresh, max_apps=limits["max_apps"]),
-        "stage3": lambda: pipeline.run_stage_03(force_refresh=force_refresh, max_apps=limits["max_apps"]),
-        "stage4": lambda: pipeline.run_stage_04(force_refresh=force_refresh, sample_size=limits["sample_size"]),
-        "stage5": lambda: pipeline.run_stage_05(force_refresh=force_refresh, max_games=limits["max_games"]),
+        "stage1": lambda: pipeline.run_stage_01(
+            force_refresh=force_refresh, max_pages=limits["max_pages"]
+        ),
+        "stage2": lambda: pipeline.run_stage_02(
+            force_refresh=force_refresh, max_apps=limits["max_apps"]
+        ),
+        "stage3": lambda: pipeline.run_stage_03(
+            force_refresh=force_refresh, max_apps=limits["max_apps"]
+        ),
+        "stage4": lambda: pipeline.run_stage_04(
+            force_refresh=force_refresh, sample_size=limits["sample_size"]
+        ),
+        "stage5": lambda: pipeline.run_stage_05(
+            force_refresh=force_refresh, max_games=limits["max_games"]
+        ),
         "all": lambda: pipeline.run_all_missing(
             force_refresh=force_refresh,
             max_pages=limits["max_pages"],
