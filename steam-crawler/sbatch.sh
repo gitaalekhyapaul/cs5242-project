@@ -34,4 +34,4 @@ echo "Current directory: $(pwd)"
     # --output steam_crawler.executed.ipynb
 
 # Run the crawler notebook headlessly
-python steam-crawler/run_notebook.py --run-mode smoke --stage all
+python steam-crawler/run_notebook.py --run-mode full --stage all
