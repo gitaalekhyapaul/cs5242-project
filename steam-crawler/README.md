@@ -5,16 +5,26 @@ This folder contains a stage-based Steam crawler designed for two modes of opera
 1. Small-batch smoke tests that validate the flow cheaply.
 2. Full dataset runs intended for long-running execution on a SLURM cluster.
 
-The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and a single orchestration notebook in `notebooks/steam_crawler.ipynb`.
+The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and two thin operator surfaces:
+
+- the submission notebook at `notebooks/steam_crawler.ipynb`
+- the notebook-equivalent runner at `run_notebook.py`
 
 ## Status Against PLAN.md
 
-The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, resume behavior, and test coverage.
+The current implementation matches the staged crawler design in [`PLAN.md`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/PLAN.md) for the runtime pipeline, cacheable CSV outputs, retry/backoff handling, notebook orchestration, the notebook-equivalent terminal runner, resume behavior, and test coverage.
+
+All crawler traffic is routed through the configured proxy bases:
+
+- `https://gpaul.cc/steamapi`
+- `https://gpaul.cc/steamstore`
 
 The test suite now has two layers:
 
 - deterministic local tests that run quickly and do not depend on Steam availability
 - an opt-in live integration test that exercises the real `appdetails` endpoint with stable app ids plus one intentionally invalid app id
+
+One audit follow-up is still open: Stage 2 currently logs and skips `appdetails` requests that exhaust retries, so Stage 3 can only infer the missing metadata by absence rather than from an explicit failed detail row.
 
 This keeps the default development flow stable while still covering the live API path when you explicitly request it.
 
@@ -25,11 +35,11 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 
 ### Stage flow
 
-1. Stage 1 fetches the Steam app list from `IStoreService/GetAppList/v1` and writes `data/stage_01_apps_catalog.csv`.
-2. Stage 2 fetches `appdetails` per app and writes `data/stage_02_app_details.csv.gz`.
+1. Stage 1 fetches the Steam app list from `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/` and writes `data/stage_01_apps_catalog.csv`.
+2. Stage 2 fetches `appdetails` per app from `https://gpaul.cc/steamstore/api/appdetails` and writes `data/stage_02_app_details.csv.gz`.
 3. Stage 3 merges the catalog and metadata into `data/stage_03_apps_with_metadata.csv.gz`.
 4. Stage 4 samples eligible games into `data/stage_04_selected_games.csv`.
-5. Stage 5 fetches reviews for the sampled games into `data/stage_05_reviews_dataset.csv.gz`.
+5. Stage 5 fetches reviews for the sampled games from `https://gpaul.cc/steamstore/appreviews/{appid}` into `data/stage_05_reviews_dataset.csv.gz`.
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
 
@@ -89,14 +99,19 @@ The package is intentionally split by responsibility instead of putting all craw
 - [`transforms.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/transforms.py): CSV flatteners, JSON serialization, sampling, and merge helpers
 - [`logging_utils.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/logging_utils.py): run logger and structured CSV error logger
 - [`pipeline.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/pipeline.py): staged orchestration, checkpointing, progress bars, and CLI entrypoint
-- [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): single operator notebook for smoke validation and full cluster execution
+- [`run_notebook.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/run_notebook.py): notebook-equivalent terminal runner with the same smoke/full profiles and preflight checks
+- [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): submission notebook for smoke validation and full cluster execution
 
 ### Retry and error handling
 
-- Requests retry on `429`, `500`, `502`, `503`, and `504`.
+- Requests retry on network errors plus `429`, `500`, `502`, `503`, and `504`.
+- Non-retryable HTTP statuses fail immediately after the first logged attempt.
 - `Retry-After` is honored first when present.
 - Similar reset/retry headers are inspected if `Retry-After` is absent.
 - Otherwise the client falls back to capped exponential backoff with jitter.
+- Warning logs include the exception summary, so timeout/socket failures are visible in `run.log` without opening `errors.csv`.
+- `run.log` is rebound to the active `log_dir` when a run uses a different workspace.
+- Stage summaries report stage-local retry and error counts instead of cumulative lifetime totals.
 - Every API error is logged to both:
   - `logs/run.log`
   - `logs/errors.csv`
@@ -115,6 +130,7 @@ steam-crawler/
 ├── SteamAPI.postman_collection.json
 ├── requirements.txt
 ├── pyproject.toml
+├── run_notebook.py
 ├── notebooks/
 │   └── steam_crawler.ipynb
 ├── src/steam_crawler/
@@ -126,6 +142,7 @@ steam-crawler/
 │   └── transforms.py
 └── tests/
     ├── test_http_client.py
+    ├── test_logging_utils.py
     ├── test_pipeline.py
     └── test_transforms.py
 ```
@@ -162,7 +179,7 @@ cd steam-crawler
 cp .env.example .env
 ```
 
-The notebook is profile-driven:
+The notebook and `run_notebook.py` are profile-driven:
 
 - `STEAM_RUN_MODE=smoke`: small-batch validation
 - `STEAM_RUN_MODE=full`: full crawl for cluster execution
@@ -197,6 +214,12 @@ Additional configuration knobs exposed through the package config include:
 - `api_host_delay_sec`
 - `store_host_delay_sec`
 - `default_host_delay_sec`
+
+The proxy endpoints are hard-coded in the runtime package:
+
+- app list: `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/`
+- app details: `https://gpaul.cc/steamstore/api/appdetails`
+- app reviews: `https://gpaul.cc/steamstore/appreviews/{appid}`
 
 ## How to test locally in small batches
 
@@ -274,7 +297,23 @@ Because the smoke profile has stage limits, it will:
 
 If you want a heavier but still local smoke run, raise the smoke profile limits in the notebook or run the CLI with larger bounds, for example `max_apps=200`, `sample_size=2`, `max_games=2`, and `reviews_per_game=200`.
 
-### Smoke test through the CLI
+### Smoke test through the notebook-equivalent runner
+
+The quickest local path without Jupyter is:
+
+```bash
+cd steam-crawler
+STEAM_API_KEY=... .venv/bin/python run_notebook.py --run-mode smoke --stage all
+```
+
+You can also run a single stage with the same smoke defaults:
+
+```bash
+cd steam-crawler
+STEAM_API_KEY=... .venv/bin/python run_notebook.py --run-mode smoke --stage stage2
+```
+
+### Smoke test through the stage CLI
 
 The pipeline module also supports bounded runs from the terminal:
 
@@ -302,9 +341,9 @@ For a real dataset build:
 
 1. Ensure earlier smoke outputs are either removed or run with `force_refresh=True` in the notebook cells when needed.
 2. Set `STEAM_RUN_MODE=full`.
-3. Execute the notebook end-to-end.
+3. Execute the notebook end-to-end, or run `run_notebook.py --run-mode full --stage all`.
 
-The notebook remains the single submission artifact; the mode flips through the environment variable rather than by editing the notebook.
+The notebook remains the single submission artifact; `run_notebook.py` exists as an execution-equivalent terminal wrapper around the same profiles and stage calls.
 The Postman collection is kept only as an API reference artifact and request example bundle.
 
 ### Full run on SLURM
@@ -351,7 +390,7 @@ For the full cluster run, make sure your cluster-side [`steam-crawler/.env`](/Us
 
 ## Architecture and execution model
 
-The notebook is deliberately thin. Its job is:
+The notebook and `run_notebook.py` are deliberately thin. Their job is:
 
 1. Locate the project root.
 2. Install the declared dependencies into the current kernel.
@@ -401,7 +440,12 @@ These directories are ignored by git.
 - Stage 3 and Stage 4 are cheap enough to rerun from their prior CSVs.
 - Stage 5 skips games already marked `completed` or `exhausted` in `stage_05_progress.csv`.
 - Stage 5 appends review rows after each fetched page and appends cursor checkpoints after each page, so interrupted runs resume inside the current game instead of restarting it from scratch.
+- Stage 5 now records a terminal `failed` progress row even when an unexpected exception aborts the run, so resume state stays explicit.
 - If a crash happens after rows are flushed but before the latest cursor checkpoint is appended, the rerun reconstructs the existing review ids from the cached dataset and deduplicates them before continuing.
+
+## Known audit gap
+
+- Stage 2 still logs and skips `appdetails` rows that exhaust retries instead of emitting an explicit failed metadata row or failing the stage. That means Stage 3 currently treats those missing rows as absent metadata rather than as a first-class fetch failure.
 
 ## Updating this README
 

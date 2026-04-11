@@ -24,9 +24,9 @@ from .transforms import (
 )
 
 
-APP_LIST_URL = "https://api.steampowered.com/IStoreService/GetAppList/v1/"
-APP_DETAILS_URL = "https://store.steampowered.com/api/appdetails"
-APP_REVIEWS_URL_TEMPLATE = "https://store.steampowered.com/appreviews/{appid}"
+APP_LIST_URL = "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"
+APP_DETAILS_URL = "https://gpaul.cc/steamstore/api/appdetails"
+APP_REVIEWS_URL_TEMPLATE = "https://gpaul.cc/steamstore/appreviews/{appid}"
 
 STAGE_01_FIELDS = ["appid", "name", "last_modified", "price_change_number", "raw_json"]
 STAGE_02_FIELDS = [
@@ -831,13 +831,17 @@ class Pipeline:
                     self._append_review_progress(state)
                     completed_ids.add(appid)
                     outer_progress.update(1)
-                except RuntimeError as exc:
-                    self.logger.error("Failed to collect reviews for app %s: %s", appid, exc)
+                except Exception as exc:
                     state.status = "failed"
                     state.finished_at = utc_timestamp()
                     state.error = str(exc)
                     self._append_review_progress(state)
                     outer_progress.update(1)
+                    if isinstance(exc, RuntimeError):
+                        self.logger.error("Failed to collect reviews for app %s: %s", appid, exc)
+                        continue
+                    self.logger.exception("Unexpected failure while collecting reviews for app %s", appid)
+                    raise
         finally:
             outer_progress.close()
 

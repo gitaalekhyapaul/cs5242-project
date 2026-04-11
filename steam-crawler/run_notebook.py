@@ -19,6 +19,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from steam_crawler import Config, Pipeline
+from steam_crawler.pipeline import APP_DETAILS_URL, APP_LIST_URL
 
 
 PREFLIGHT_TIMEOUT_SEC = 30
@@ -117,7 +118,7 @@ def run_preflight(root_dir: Path) -> None:
 
     preflight_payload = fetch_preflight_json(
         "Steam API preflight",
-        "https://api.steampowered.com/IStoreService/GetAppList/v1/",
+        APP_LIST_URL,
         params={"key": steam_api_key, "max_results": 1},
     )
     apps = preflight_payload.get("response", {}).get("apps", [])
@@ -127,7 +128,7 @@ def run_preflight(root_dir: Path) -> None:
 
     appdetails_payload = fetch_preflight_json(
         "Steam appdetails preflight",
-        "https://store.steampowered.com/api/appdetails",
+        APP_DETAILS_URL,
         params={"appids": 10, "cc": "us", "l": "english", "filters": "basic"},
     )
     appdetails_entry = appdetails_payload.get("10", {}) if isinstance(appdetails_payload, dict) else {}

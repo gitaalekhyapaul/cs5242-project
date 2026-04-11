@@ -255,6 +255,43 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(call_log.count(("recent", "*")), 1)
         self.assertEqual(call_log.count(("all", "*")), 2)
 
+    def test_stage_05_records_failed_progress_for_unexpected_exception_then_reraises(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_04_selected_games.csv",
+            ["appid"],
+            [{"appid": 10}],
+        )
+
+        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_05":
+                raise AssertionError(stage)
+            if str(params["filter"]) == "recent":
+                return {
+                    "reviews": [
+                        {
+                            "recommendationid": "r1",
+                            "author": {"steamid": "100"},
+                            "timestamp_created": 1,
+                            "review": "recent one",
+                        }
+                    ],
+                    "cursor": "recent-1",
+                }
+            raise OSError("disk write failed")
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(review_handler))
+        with self.assertRaises(OSError):
+            pipeline.run_stage_05()
+
+        review_rows = read_csv(self.root / "data" / "stage_05_reviews_dataset.csv.gz")
+        self.assertEqual([row["recommendationid"] for row in review_rows], ["r1"])
+
+        progress_rows = read_csv(self.root / "data" / "stage_05_progress.csv")
+        self.assertEqual(progress_rows[-1]["status"], "failed")
+        self.assertEqual(progress_rows[-1]["recent_cursor"], "recent-1")
+        self.assertEqual(progress_rows[-1]["helpful_cursor"], "*")
+        self.assertIn("disk write failed", progress_rows[-1]["error"])
+
 
 @unittest.skipUnless(os.getenv("RUN_LIVE_STEAM_TESTS") == "1", "Set RUN_LIVE_STEAM_TESTS=1 to run live Steam tests.")
 class PipelineLiveIntegrationTests(unittest.TestCase):

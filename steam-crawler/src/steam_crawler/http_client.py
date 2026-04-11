@@ -17,7 +17,9 @@ from .transforms import minified_json, utc_timestamp
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 
-def parse_retry_after(headers: dict[str, str], now: datetime | None = None) -> float | None:
+def parse_retry_after(
+    headers: dict[str, str], now: datetime | None = None
+) -> float | None:
     if not headers:
         return None
 
@@ -84,7 +86,7 @@ class HttpClient:
         self.session = session or requests.Session()
         self.session.headers.update(
             {
-                "User-Agent": "steam-crawler/0.1 (+https://github.com/openai/codex)",
+                "User-Agent": "steam-crawler/0.1",
                 "Accept": "application/json",
             }
         )
@@ -93,26 +95,40 @@ class HttpClient:
         self._last_request_at: dict[str, float] = {}
         self._rng = random.Random(config.random_seed)
 
+    def _request_bucket(self, url: str) -> str:
+        parsed = urlparse(url)
+        host = parsed.netloc
+        path = parsed.path or ""
+        if host == "api.steampowered.com" or (
+            host == "gpaul.cc" and path.startswith("/steamapi/")
+        ):
+            return "steam_api"
+        if host == "store.steampowered.com" or (
+            host == "gpaul.cc" and path.startswith("/steamstore/")
+        ):
+            return "steam_store"
+        return host
+
     def _host_delay(self, url: str) -> float:
-        host = urlparse(url).netloc
-        if host == "api.steampowered.com":
+        bucket = self._request_bucket(url)
+        if bucket == "steam_api":
             return self.config.api_host_delay_sec
-        if host == "store.steampowered.com":
+        if bucket == "steam_store":
             return self.config.store_host_delay_sec
         return self.config.default_host_delay_sec
 
     def _throttle(self, url: str) -> None:
-        host = urlparse(url).netloc
+        bucket = self._request_bucket(url)
         delay = self._host_delay(url)
         if delay <= 0:
             return
         now = time.monotonic()
-        last_request_at = self._last_request_at.get(host)
+        last_request_at = self._last_request_at.get(bucket)
         if last_request_at is not None:
             elapsed = now - last_request_at
             if elapsed < delay:
                 time.sleep(delay - elapsed)
-        self._last_request_at[host] = time.monotonic()
+        self._last_request_at[bucket] = time.monotonic()
 
     def _record_error(
         self,
@@ -144,7 +160,9 @@ class HttpClient:
                 "response_body": body,
                 "exception_type": type(exception).__name__ if exception else "",
                 "exception_message": str(exception) if exception else "",
-                "retry_after_seconds": retry_after_seconds if retry_after_seconds is not None else "",
+                "retry_after_seconds": (
+                    retry_after_seconds if retry_after_seconds is not None else ""
+                ),
                 "logged_at": utc_timestamp(),
             }
         )
@@ -176,7 +194,9 @@ class HttpClient:
             try:
                 # Keep request pacing predictable per host before hitting the Steam endpoints.
                 self._throttle(url)
-                response = self.session.get(url, params=params, timeout=self.config.request_timeout_sec)
+                response = self.session.get(
+                    url, params=params, timeout=self.config.request_timeout_sec
+                )
                 headers = dict(response.headers)
                 status_code = response.status_code
                 body = response.text
@@ -184,7 +204,10 @@ class HttpClient:
                 return response.json()
             except requests.HTTPError as exc:
                 last_exception = exc
-                should_retry = status_code in RETRYABLE_STATUS_CODES and attempt <= self.config.max_retries
+                should_retry = (
+                    status_code in RETRYABLE_STATUS_CODES
+                    and attempt <= self.config.max_retries
+                )
                 retry_after_seconds = None
                 if should_retry:
                     retry_after_seconds = compute_backoff_delay(
@@ -238,4 +261,6 @@ class HttpClient:
                 self.retry_count += 1
                 time.sleep(retry_after_seconds or 0)
 
-        raise RuntimeError(f"Failed request for stage={stage}, appid={appid}, url={url}") from last_exception
+        raise RuntimeError(
+            f"Failed request for stage={stage}, appid={appid}, url={url}"
+        ) from last_exception

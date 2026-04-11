@@ -103,6 +103,38 @@ class RetryDelayTests(unittest.TestCase):
 
 
 class HttpClientErrorHandlingTests(unittest.TestCase):
+    def test_gpaul_proxy_urls_map_to_distinct_delay_buckets(self) -> None:
+        with TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            client = HttpClient(
+                build_config(
+                    root,
+                    api_host_delay_sec=1.5,
+                    store_host_delay_sec=2.5,
+                    default_host_delay_sec=3.5,
+                ),
+                logger=Mock(spec=logging.Logger),
+                error_logger=RecordingErrorLogger(),
+                session=Mock(),
+            )
+
+            self.assertEqual(
+                client._host_delay("https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"),
+                1.5,
+            )
+            self.assertEqual(
+                client._host_delay("https://gpaul.cc/steamstore/api/appdetails"),
+                2.5,
+            )
+            self.assertEqual(
+                client._request_bucket("https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"),
+                "steam_api",
+            )
+            self.assertEqual(
+                client._request_bucket("https://gpaul.cc/steamstore/api/appdetails"),
+                "steam_store",
+            )
+
     def test_final_retryable_http_error_is_logged_once(self) -> None:
         with TemporaryDirectory() as tempdir:
             root = Path(tempdir)
