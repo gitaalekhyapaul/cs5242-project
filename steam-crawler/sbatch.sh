@@ -23,13 +23,6 @@ HOSTNAME=$(hostname -s)
 # Generate a fresh token for each job submission.
 TOKEN=$(openssl rand -base64 64 | tr -dc 'A-Za-z0-9' | head -c 50; echo)
 
-# Sanity Checks
-echo "Sanity Checks"
-which python
-python -c "import sys; print(sys.executable)"
-python -c "import zmq; print(zmq.__version__)"
-echo "Sanity Checks Complete"
-
 # Interactive Jupyter remains available as an opt-in path if you need to reverse tunnel into the node.
 # echo "Use token: $TOKEN, Jupyter will run on: $HOSTNAME:$PORT"
 # jupyter lab --no-browser --ip=0.0.0.0 --port=$PORT --ServerApp.token=$TOKEN --ServerApp.allow_origin='*'
