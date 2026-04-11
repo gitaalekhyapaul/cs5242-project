@@ -1,28 +1,27 @@
 #!/bin/bash
-#SBATCH --job-name=gap_steam
+#SBATCH --job-name=gap_steam_long
 #SBATCH --output=/home/g/gapaul/logs/%j_out.log
 #SBATCH --error=/home/g/gapaul/errors/%j_error.log
 #SBATCH --time=72:00:00
 #SBATCH --cpus-per-task=8
 ##SBATCH --gres=gpu:a100-40:1
 #SBATCH --mem=64G
-#SBATCH --partition=normal
+#SBATCH --partition=long
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=gapaul@comp.nus.edu.sg
 
+# Config
+SOC_USERNAME="gapaul"
+SOC_USERNAME_PREFIX="g"
+PROJECT_NAME="cs5242-project"
+
 # Use the shared cluster environment that already has the required Python toolchain.
-source ~/env/bin/activate
-
-# Run from the repository folder so notebook paths resolve consistently regardless of submit location.
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
-
-# Jupyter uses this host and token if you later choose to uncomment the interactive lab command.
-PORT=8888
-HOSTNAME=$(hostname -s)
-# Generate a fresh token for each job submission.
-TOKEN=$(openssl rand -base64 64 | tr -dc 'A-Za-z0-9' | head -c 50; echo)
-
+echo "Activating environment: /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/env/bin/activate"
+source /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/env/bin/activate
+echo "Environment activated"
+echo "Current directory: $(pwd)"
+cd "/home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/${PROJECT_NAME}"
+echo "Current directory: $(pwd)"
 # Interactive Jupyter remains available as an opt-in path if you need to reverse tunnel into the node.
 # echo "Use token: $TOKEN, Jupyter will run on: $HOSTNAME:$PORT"
 # jupyter lab --no-browser --ip=0.0.0.0 --port=$PORT --ServerApp.token=$TOKEN --ServerApp.allow_origin='*'
