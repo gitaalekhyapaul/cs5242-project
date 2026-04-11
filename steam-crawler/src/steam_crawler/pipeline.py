@@ -4,6 +4,7 @@ import argparse
 import csv
 import gzip
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
@@ -89,6 +90,7 @@ def _is_notebook_runtime() -> bool:
 
 
 def _progress_bar(*args, **kwargs):
+    kwargs.setdefault("file", sys.stdout)
     # Prefer notebook-native progress bars when the pipeline is invoked from Jupyter.
     if _is_notebook_runtime():
         from tqdm.notebook import tqdm as notebook_tqdm

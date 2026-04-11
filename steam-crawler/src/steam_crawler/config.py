@@ -25,7 +25,7 @@ class Config:
     max_retries: int = 5
     base_backoff_sec: float = 1.0
     max_backoff_sec: float = 60.0
-    app_list_page_size: int = 50_000
+    app_list_page_size: int = 5_000
     appdetails_country_code: str = "us"
     appdetails_language: str = "english"
     reviews_language: str = "all"

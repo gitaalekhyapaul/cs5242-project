@@ -34,7 +34,7 @@
 - HTTP client:
   use one shared session with explicit `User-Agent`, sane timeouts, and per-endpoint throttling. Retry on network errors and `429/500/502/503/504`; non-retryable HTTP errors should fail immediately after one logged attempt. On `429`, first honor `Retry-After` if present as seconds or HTTP date; then check similar headers if any appear; otherwise fall back to deterministic exponential backoff starting at `2^0 = 1` second and doubling per retry, capped by `max_backoff_sec`. Every failed response must be logged with full headers and body to both the run logger and `logs/errors.csv`.
 - Stage 1:
-  call `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/` with `max_results=50000`, follow `have_more_results` and `last_appid`, and write one row per app. Resume by skipping this stage if the CSV already exists, unless the user forces a refresh.
+  call `https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/` with `max_results=5000`, follow `have_more_results` and `last_appid`, and write one row per app. Resume by skipping this stage if the CSV already exists, unless the user forces a refresh.
 - Stage 2:
   read Stage 1 and fetch appdetails one app at a time from `https://gpaul.cc/steamstore/api/appdetails` using `cc=us` and `l=english` for stable category text. Persist after every successful app so reruns can skip completed `appid`s. Store minified raw JSON in the CSV; flatten categories as pipe-separated IDs and descriptions.
 - Stage 3:

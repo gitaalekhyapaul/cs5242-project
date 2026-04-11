@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,7 +26,7 @@ def setup_logger(log_dir: Path) -> logging.Logger:
         for handler in logger.handlers
     )
     if not has_stream_handler:
-        stream_handler = logging.StreamHandler()
+        stream_handler = logging.StreamHandler(sys.stdout)
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 

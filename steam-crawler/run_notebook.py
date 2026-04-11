@@ -39,7 +39,7 @@ FULL_CONFIG = {
     "max_retries": 10,
     "base_backoff_sec": 1.0,
     "max_backoff_sec": 120.0,
-    "app_list_page_size": 50_000,
+    "app_list_page_size": 5_000,
 }
 
 SMOKE_CONFIG = {

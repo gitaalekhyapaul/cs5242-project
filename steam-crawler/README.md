@@ -194,7 +194,7 @@ The notebook uses two profiles:
   - `helpful_quota=10`
   - stage limits: `max_pages=1`, `max_apps=25`, `max_games=2`
 - Full profile:
-  - `app_list_page_size=50_000`
+  - `app_list_page_size=5_000`
   - `sample_size=10_000`
   - `reviews_per_game=1_000`
   - `recent_quota=500`
