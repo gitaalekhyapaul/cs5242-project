@@ -8,9 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-import psutil
 import requests
 from dotenv import load_dotenv
+
+try:
+    import psutil
+except ModuleNotFoundError:
+    psutil = None
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -56,6 +60,17 @@ FULL_LIMITS = {"max_pages": None, "max_apps": None, "sample_size": None, "max_ga
 SMOKE_LIMITS = {"max_pages": 1, "max_apps": 25, "sample_size": 5, "max_games": 2}
 
 
+def load_project_env(root_dir: Path) -> None:
+    load_dotenv(root_dir / ".env", override=False)
+
+
+def resolve_run_mode(cli_value: str | None) -> str:
+    run_mode = (cli_value or os.getenv("STEAM_RUN_MODE", "smoke")).strip().lower()
+    if run_mode not in {"smoke", "full"}:
+        raise ValueError(f"Invalid STEAM_RUN_MODE: {run_mode!r}. Expected 'smoke' or 'full'.")
+    return run_mode
+
+
 def fetch_preflight_json(label: str, url: str, *, params: dict[str, object]) -> object:
     try:
         response = requests.get(url, params=params, timeout=PREFLIGHT_TIMEOUT_SEC)
@@ -78,11 +93,14 @@ def fetch_preflight_json(label: str, url: str, *, params: dict[str, object]) -> 
 def print_system_preflight() -> None:
     hostname = socket.gethostname()
     available_cpus = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
-    memory = psutil.virtual_memory()
     print(f"Hostname: {hostname}")
     print(f"Available CPUs: {available_cpus}")
-    print(f"Total RAM (GiB): {memory.total / (1024 ** 3):.2f}")
-    print(f"Available RAM (GiB): {memory.available / (1024 ** 3):.2f}")
+    if psutil is None:
+        print("RAM check: psutil not installed in this Python environment; skipping memory probe.")
+    else:
+        memory = psutil.virtual_memory()
+        print(f"Total RAM (GiB): {memory.total / (1024 ** 3):.2f}")
+        print(f"Available RAM (GiB): {memory.available / (1024 ** 3):.2f}")
 
     nvidia_smi = shutil.which("nvidia-smi")
     if not nvidia_smi:
@@ -107,7 +125,7 @@ def print_system_preflight() -> None:
 
 
 def run_preflight(root_dir: Path) -> None:
-    load_dotenv(root_dir / ".env", override=False)
+    load_project_env(root_dir)
     print_system_preflight()
 
     steam_api_key = os.getenv("STEAM_API_KEY")
@@ -156,8 +174,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-mode",
         choices=["smoke", "full"],
-        default=os.getenv("STEAM_RUN_MODE", "smoke").strip().lower(),
-        help="Execution profile. Matches the notebook's STEAM_RUN_MODE handling.",
+        default=None,
+        help="Execution profile. Overrides STEAM_RUN_MODE from the environment or steam-crawler/.env.",
     )
     parser.add_argument(
         "--stage",
@@ -227,11 +245,13 @@ def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
     root_dir = args.root.resolve()
+    load_project_env(root_dir)
+    run_mode = resolve_run_mode(args.run_mode)
 
     if not args.skip_preflight:
         run_preflight(root_dir)
 
-    active_config, active_limits = build_active_config(args.run_mode)
+    active_config, active_limits = build_active_config(run_mode)
     active_limits = apply_limit_overrides(
         active_limits,
         max_pages=args.max_pages,
@@ -243,7 +263,7 @@ def main() -> int:
     settings = Config.from_env(root_dir, **active_config)
     pipeline = Pipeline(settings)
 
-    print(f"Run mode: {args.run_mode}")
+    print(f"Run mode: {run_mode}")
     print(f"Stage limits: {active_limits}")
 
     result = run_selected_stage(
