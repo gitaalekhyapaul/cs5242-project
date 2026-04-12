@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -14,16 +15,26 @@ def resolve_root(root: Path) -> Path:
     return resolved
 
 
-def build_stage_paths(root: Path) -> dict[str, Path]:
-    data_dir = root / "data"
+def resolve_data_dir(root: Path, data_dir: Path | None) -> Path:
+    raw_value = os.getenv("STEAM_DATA_DIR")
+    resolved = Path(raw_value) if raw_value is not None else data_dir
+    if resolved is None:
+        return root / "data"
+    if not resolved.is_absolute():
+        resolved = root / resolved
+    return resolved.resolve()
+
+
+def build_stage_paths(root: Path, data_dir: Path | None = None) -> dict[str, Path]:
+    resolved_data_dir = resolve_data_dir(root, data_dir)
     log_dir = root / "logs"
     return {
-        "stage_01": data_dir / "stage_01_apps_catalog.csv",
-        "stage_02": data_dir / "stage_02_app_details.csv.gz",
-        "stage_03": data_dir / "stage_03_apps_with_metadata.csv.gz",
-        "stage_04": data_dir / "stage_04_selected_games.csv",
-        "stage_05": data_dir / "stage_05_reviews_dataset.csv.gz",
-        "stage_05_progress": data_dir / "stage_05_progress.csv",
+        "stage_01": resolved_data_dir / "stage_01_apps_catalog.csv",
+        "stage_02": resolved_data_dir / "stage_02_app_details.csv.gz",
+        "stage_03": resolved_data_dir / "stage_03_apps_with_metadata.csv.gz",
+        "stage_04": resolved_data_dir / "stage_04_selected_games.csv",
+        "stage_05": resolved_data_dir / "stage_05_reviews_dataset.csv.gz",
+        "stage_05_progress": resolved_data_dir / "stage_05_progress.csv",
         "errors": log_dir / "errors.csv",
         "run_log": log_dir / "run.log",
     }
@@ -227,6 +238,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Root directory for the steam-crawler workspace.",
     )
     parser.add_argument(
+        "--data-dir",
+        default=None,
+        type=Path,
+        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+    )
+    parser.add_argument(
         "--appid",
         type=int,
         default=None,
@@ -251,7 +268,7 @@ def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
     root_dir = resolve_root(args.root)
-    stage_paths = build_stage_paths(root_dir)
+    stage_paths = build_stage_paths(root_dir, args.data_dir)
     print_paths(root_dir, stage_paths)
     print_summary(stage_paths, top_n=args.top_n, error_tail=args.error_tail)
     print_app_inspection(stage_paths, args.appid)

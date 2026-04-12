@@ -920,6 +920,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Root directory for the steam-crawler workspace.",
     )
     parser.add_argument(
+        "--data-dir",
+        default=None,
+        type=Path,
+        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+    )
+    parser.add_argument(
         "--stage",
         choices=["stage1", "stage2", "stage3", "stage4", "stage5", "all"],
         default="all",
@@ -964,6 +970,8 @@ def main() -> int:
         config_overrides["rate_limit_gap_delay_sec"] = args.gap_delay
     if args.loop_limit is not None:
         config_overrides["review_cursor_loop_limit"] = args.loop_limit
+    if args.data_dir is not None:
+        config_overrides["data_dir"] = args.data_dir
     config = Config.from_env(args.root, **config_overrides)
     pipeline = Pipeline(config)
     dispatch = {

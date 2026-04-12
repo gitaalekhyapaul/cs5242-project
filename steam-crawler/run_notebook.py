@@ -202,6 +202,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Root directory for the steam-crawler workspace.",
     )
     parser.add_argument(
+        "--data-dir",
+        default=None,
+        type=Path,
+        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+    )
+    parser.add_argument(
         "--run-mode",
         choices=["smoke", "full"],
         default=None,
@@ -345,12 +351,15 @@ def main() -> int:
         active_config["rate_limit_gap_delay_sec"] = args.gap_delay
     if args.loop_limit is not None:
         active_config["review_cursor_loop_limit"] = args.loop_limit
+    if args.data_dir is not None:
+        active_config["data_dir"] = args.data_dir
 
     settings = Config.from_env(root_dir, endpoint_mode=endpoint_mode, **active_config)
     pipeline = Pipeline(settings)
 
     print(f"Run mode: {run_mode}")
     print(f"Endpoint mode: {settings.endpoint_mode}")
+    print(f"Data dir: {settings.data_dir}")
     print(f"Stage limits: {active_limits}")
 
     result = run_selected_stage(

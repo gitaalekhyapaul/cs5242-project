@@ -183,6 +183,11 @@ class PipelineResumeTests(unittest.TestCase):
             config = Config.from_env(self.root, review_cursor_loop_limit=4)
         self.assertEqual(config.review_cursor_loop_limit, 12)
 
+    def test_config_from_env_prefers_data_dir_env_over_override(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_DATA_DIR": "cluster-data"}):
+            config = Config.from_env(self.root, data_dir=self.root / "custom-data")
+        self.assertEqual(config.data_dir, (self.root / "cluster-data").resolve())
+
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []
 

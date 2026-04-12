@@ -39,6 +39,17 @@ def resolve_review_cursor_loop_limit(cli_value: int | None = None) -> int:
     return loop_limit
 
 
+def resolve_data_dir(root_dir: Path, cli_value: str | Path | None = None) -> Path:
+    raw_value = os.getenv("STEAM_DATA_DIR")
+    resolved = raw_value if raw_value is not None else cli_value
+    if resolved is None:
+        return root_dir / "data"
+    path = Path(resolved)
+    if not path.is_absolute():
+        path = root_dir / path
+    return path.resolve()
+
+
 @dataclass(slots=True)
 class Config:
     """Central runtime configuration for both notebook and CLI execution."""
@@ -110,11 +121,13 @@ class Config:
         review_cursor_loop_limit = resolve_review_cursor_loop_limit(
             int(loop_limit_override) if loop_limit_override is not None else None
         )
+        data_dir_override = overrides.get("data_dir")
+        data_dir = resolve_data_dir(resolved_root, data_dir_override)
 
         settings = cls(
             root_dir=resolved_root,
             steam_api_key=api_key,
-            data_dir=resolved_root / "data",
+            data_dir=data_dir,
             log_dir=resolved_root / "logs",
             endpoint_mode=endpoint_mode,
             review_cursor_loop_limit=review_cursor_loop_limit,
@@ -123,5 +136,6 @@ class Config:
             merged_overrides = dict(overrides)
             merged_overrides["endpoint_mode"] = endpoint_mode
             merged_overrides["review_cursor_loop_limit"] = review_cursor_loop_limit
+            merged_overrides["data_dir"] = data_dir
             settings = replace(settings, **merged_overrides)
         return settings

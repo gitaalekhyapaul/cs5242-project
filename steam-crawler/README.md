@@ -196,10 +196,12 @@ Endpoint selection is also environment-driven:
 - `STEAM_ENDPOINT_MODE=proxy`: default, uses `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`
 - `STEAM_ENDPOINT_MODE=direct`: uses `https://api.steampowered.com` and `https://store.steampowered.com`
 - `STEAM_CURSOR_LOOP_LIMIT=10`: default stop-gap for repeated no-yield review cursors in Stage 5
+- `STEAM_DATA_DIR=/path/to/stage-data`: optional override for stage CSV / gzip outputs; when relative, it is resolved under the crawler root
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. If the env var is set, it takes priority over the CLI flag.
 Both terminal entrypoints also accept `--gap-delay <seconds>` to override the `429` cooling-off gap without editing the profile config.
 Both terminal entrypoints also accept `--loop-limit <count>` to override the Stage 5 repeated-cursor stop-gap, but `STEAM_CURSOR_LOOP_LIMIT` wins if both are set.
+Both terminal entrypoints also accept `--data-dir <path>` to override stage output storage, but `STEAM_DATA_DIR` wins if both are set.
 `progress_monitor.py` mirrors `notebooks/progress_monitor.ipynb` as a plain terminal script so you can inspect crawl progress on a compute node without Jupyter.
 When you pass `--max-apps N`, stages 2 and 3 operate on the first `N` app ids from Stage 1 as a total scope across reruns, not `N` additional appdetails fetches per invocation.
 
