@@ -40,6 +40,7 @@ FULL_CONFIG = {
     "base_backoff_sec": 1.0,
     "max_backoff_sec": 120.0,
     "rate_limit_gap_delay_sec": 300.0,
+    "review_cursor_loop_limit": 10,
     "app_list_page_size": 5_000,
 }
 
@@ -55,6 +56,7 @@ SMOKE_CONFIG = {
     "base_backoff_sec": 1.0,
     "max_backoff_sec": 120.0,
     "rate_limit_gap_delay_sec": 300.0,
+    "review_cursor_loop_limit": 10,
     "app_list_page_size": 25,
 }
 
@@ -248,6 +250,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
     )
     parser.add_argument(
+        "--loop-limit",
+        type=int,
+        default=None,
+        help="Optional override for the repeated-cursor stop-gap in stage 5. Ignored when STEAM_CURSOR_LOOP_LIMIT is set.",
+    )
+    parser.add_argument(
         "--force-refresh",
         action="store_true",
         help="Ignore cached outputs for the selected stage.",
@@ -335,6 +343,8 @@ def main() -> int:
     )
     if args.gap_delay is not None:
         active_config["rate_limit_gap_delay_sec"] = args.gap_delay
+    if args.loop_limit is not None:
+        active_config["review_cursor_loop_limit"] = args.loop_limit
 
     settings = Config.from_env(root_dir, endpoint_mode=endpoint_mode, **active_config)
     pipeline = Pipeline(settings)

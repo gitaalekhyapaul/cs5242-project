@@ -195,9 +195,12 @@ Endpoint selection is also environment-driven:
 
 - `STEAM_ENDPOINT_MODE=proxy`: default, uses `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`
 - `STEAM_ENDPOINT_MODE=direct`: uses `https://api.steampowered.com` and `https://store.steampowered.com`
+- `STEAM_CURSOR_LOOP_LIMIT=10`: default stop-gap for repeated no-yield review cursors in Stage 5
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. If the env var is set, it takes priority over the CLI flag.
 Both terminal entrypoints also accept `--gap-delay <seconds>` to override the `429` cooling-off gap without editing the profile config.
+Both terminal entrypoints also accept `--loop-limit <count>` to override the Stage 5 repeated-cursor stop-gap, but `STEAM_CURSOR_LOOP_LIMIT` wins if both are set.
+`progress_monitor.py` mirrors `notebooks/progress_monitor.ipynb` as a plain terminal script so you can inspect crawl progress on a compute node without Jupyter.
 When you pass `--max-apps N`, stages 2 and 3 operate on the first `N` app ids from Stage 1 as a total scope across reruns, not `N` additional appdetails fetches per invocation.
 
 The notebook uses two profiles:
@@ -481,6 +484,7 @@ These directories are ignored by git.
 - Stage 3 and Stage 4 are cheap enough to rerun from their prior CSVs.
 - Stage 5 skips games already marked `completed` or `exhausted` in `stage_05_progress.csv`.
 - Stage 5 appends review rows after each fetched page and appends cursor checkpoints after each page, so interrupted runs resume inside the current game instead of restarting it from scratch.
+- Stage 5 no longer sends `day_range=365` on the helpful stream, and it now stops a review stream after the configured repeated-cursor limit without any new unique reviews so one game cannot spin forever in a cursor cycle.
 - Stage 5 now records a terminal `failed` progress row even when an unexpected exception aborts the run, so resume state stays explicit.
 - If a crash happens after rows are flushed but before the latest cursor checkpoint is appended, the rerun reconstructs the existing review ids from the cached dataset and deduplicates them before continuing.
 

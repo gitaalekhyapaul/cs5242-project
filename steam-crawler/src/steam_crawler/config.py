@@ -21,6 +21,24 @@ def resolve_endpoint_mode(cli_value: str | None = None) -> str:
     return endpoint_mode
 
 
+def resolve_review_cursor_loop_limit(cli_value: int | None = None) -> int:
+    raw_value = os.getenv("STEAM_CURSOR_LOOP_LIMIT")
+    resolved = raw_value if raw_value is not None else cli_value
+    if resolved is None:
+        return 10
+    try:
+        loop_limit = int(resolved)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid STEAM_CURSOR_LOOP_LIMIT: {resolved!r}. Expected a positive integer."
+        ) from exc
+    if loop_limit <= 0:
+        raise ValueError(
+            f"Invalid STEAM_CURSOR_LOOP_LIMIT: {loop_limit!r}. Expected a positive integer."
+        )
+    return loop_limit
+
+
 @dataclass(slots=True)
 class Config:
     """Central runtime configuration for both notebook and CLI execution."""
@@ -40,6 +58,7 @@ class Config:
     base_backoff_sec: float = 1.0
     max_backoff_sec: float = 60.0
     rate_limit_gap_delay_sec: float = 300.0
+    review_cursor_loop_limit: int = 10
     app_list_page_size: int = 5_000
     appdetails_country_code: str = "us"
     appdetails_language: str = "english"
@@ -87,6 +106,10 @@ class Config:
         if not api_key:
             raise ValueError("STEAM_API_KEY is required. Set it in the environment or in steam-crawler/.env.")
         endpoint_mode = resolve_endpoint_mode(str(overrides.get("endpoint_mode")) if "endpoint_mode" in overrides else None)
+        loop_limit_override = overrides.get("review_cursor_loop_limit")
+        review_cursor_loop_limit = resolve_review_cursor_loop_limit(
+            int(loop_limit_override) if loop_limit_override is not None else None
+        )
 
         settings = cls(
             root_dir=resolved_root,
@@ -94,9 +117,11 @@ class Config:
             data_dir=resolved_root / "data",
             log_dir=resolved_root / "logs",
             endpoint_mode=endpoint_mode,
+            review_cursor_loop_limit=review_cursor_loop_limit,
         )
         if overrides:
             merged_overrides = dict(overrides)
             merged_overrides["endpoint_mode"] = endpoint_mode
+            merged_overrides["review_cursor_loop_limit"] = review_cursor_loop_limit
             settings = replace(settings, **merged_overrides)
         return settings

@@ -250,7 +250,6 @@ class ReviewCollector:
         appid: int,
         review_filter: str,
         cursor: str,
-        day_range: int | None = None,
     ) -> dict[str, object]:
         params: dict[str, object] = {
             "json": 1,
@@ -261,8 +260,6 @@ class ReviewCollector:
             "num_per_page": self.config.reviews_page_size,
             "cursor": cursor,
         }
-        if day_range is not None:
-            params["day_range"] = day_range
         return self.http_client.get_json(
             self.config.app_reviews_url(appid),
             stage="stage_05",
@@ -279,14 +276,14 @@ class ReviewCollector:
         review_filter: str,
         source_stream: str,
         cursor: str,
-        day_range: int | None,
         inner_progress,
+        seen_stream_cursors: dict[str, set[str]],
+        repeated_cursor_counts: dict[str, int],
     ) -> list[dict[str, object]]:
         payload = self.page_reviews(
             appid=appid,
             review_filter=review_filter,
             cursor=cursor,
-            day_range=day_range,
         )
         reviews = payload.get("reviews", [])
         next_cursor = payload.get("cursor", cursor)
@@ -308,7 +305,25 @@ class ReviewCollector:
             if state.total_unique + len(collected) >= self.config.reviews_per_game:
                 break
 
-        exhausted = not reviews or next_cursor == cursor
+        no_new_unique_reviews = not collected
+        if next_cursor in seen_stream_cursors[source_stream] and no_new_unique_reviews:
+            repeated_cursor_counts[source_stream] += 1
+        else:
+            repeated_cursor_counts[source_stream] = 0
+        seen_stream_cursors[source_stream].add(next_cursor)
+
+        exhausted = (
+            not reviews
+            or next_cursor == cursor
+            or repeated_cursor_counts[source_stream] >= self.config.review_cursor_loop_limit
+        )
+        if repeated_cursor_counts[source_stream] >= self.config.review_cursor_loop_limit:
+            self.logger.warning(
+                "Stopping stage_05 %s pagination for app %s after %s repeated cursors without new reviews.",
+                source_stream,
+                appid,
+                self.config.review_cursor_loop_limit,
+            )
         if source_stream == "recent":
             state.recent_cursor = next_cursor
             state.recent_exhausted = exhausted
@@ -333,6 +348,11 @@ class ReviewCollector:
             unit="reviews",
             leave=False,
         )
+        seen_stream_cursors = {
+            "recent": {state.recent_cursor},
+            "helpful": {state.helpful_cursor},
+        }
+        repeated_cursor_counts = {"recent": 0, "helpful": 0}
         try:
             # Phase 1: take a recent-review slice first to preserve a time-oriented sample.
             while state.recent_count < self.config.recent_quota and not state.recent_exhausted:
@@ -344,8 +364,9 @@ class ReviewCollector:
                     review_filter="recent",
                     source_stream="recent",
                     cursor=state.recent_cursor,
-                    day_range=None,
                     inner_progress=inner_progress,
+                    seen_stream_cursors=seen_stream_cursors,
+                    repeated_cursor_counts=repeated_cursor_counts,
                 )
                 checkpoint(page_rows, state)
 
@@ -359,8 +380,9 @@ class ReviewCollector:
                     review_filter="all",
                     source_stream="helpful",
                     cursor=state.helpful_cursor,
-                    day_range=365,
                     inner_progress=inner_progress,
+                    seen_stream_cursors=seen_stream_cursors,
+                    repeated_cursor_counts=repeated_cursor_counts,
                 )
                 checkpoint(page_rows, state)
 
@@ -374,8 +396,9 @@ class ReviewCollector:
                     review_filter="recent",
                     source_stream="recent",
                     cursor=state.recent_cursor,
-                    day_range=None,
                     inner_progress=inner_progress,
+                    seen_stream_cursors=seen_stream_cursors,
+                    repeated_cursor_counts=repeated_cursor_counts,
                 )
                 checkpoint(page_rows, state)
         finally:
@@ -905,6 +928,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
     )
+    parser.add_argument(
+        "--loop-limit",
+        type=int,
+        default=None,
+        help="Optional override for the repeated-cursor stop-gap in stage 5. Ignored when STEAM_CURSOR_LOOP_LIMIT is set.",
+    )
     parser.add_argument("--force-refresh", action="store_true", help="Ignore cached outputs for the selected stage.")
     return parser
 
@@ -915,6 +944,8 @@ def main() -> int:
     config_overrides: dict[str, object] = {"endpoint_mode": args.endpoint_mode}
     if args.gap_delay is not None:
         config_overrides["rate_limit_gap_delay_sec"] = args.gap_delay
+    if args.loop_limit is not None:
+        config_overrides["review_cursor_loop_limit"] = args.loop_limit
     config = Config.from_env(args.root, **config_overrides)
     pipeline = Pipeline(config)
     dispatch = {

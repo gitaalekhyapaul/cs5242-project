@@ -13,10 +13,11 @@
 - Stage 4 will sample up to 10,000 games where `recommendations_total > 5000`, using a fixed seed for reproducibility.
 - Stage 5 will pull 1,000 reviews per selected game as `500 recent + 500 helpful`, deduplicated by `recommendationid` with backfill until 1,000 unique reviews or exhaustion.
 - The production runtime defaults to the proxy bases `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`, but can switch back to the original Steam hosts when `STEAM_ENDPOINT_MODE=direct` is set. If both env and CLI endpoint mode are set, the env var wins.
+- Stage 5's repeated-cursor stop-gap defaults to `STEAM_CURSOR_LOOP_LIMIT=10`; `--loop-limit` is available on both terminal runners, but the env var wins if both are set.
 
 ## Interfaces
 - Config can come from notebook cells, `run_notebook.py`, or env vars:
-  `STEAM_API_KEY`, `STEAM_ENDPOINT_MODE`, `sample_size=10000`, `min_recommendations=5000`, `reviews_per_game=1000`, `recent_quota=500`, `helpful_quota=500`, `random_seed=5242`, `request_timeout_sec`, `max_retries`, `base_backoff_sec`, `max_backoff_sec`.
+  `STEAM_API_KEY`, `STEAM_ENDPOINT_MODE`, `STEAM_CURSOR_LOOP_LIMIT`, `sample_size=10000`, `min_recommendations=5000`, `reviews_per_game=1000`, `recent_quota=500`, `helpful_quota=500`, `random_seed=5242`, `request_timeout_sec`, `max_retries`, `base_backoff_sec`, `max_backoff_sec`.
 - Endpoint mode values:
   `proxy` for `gpaul.cc` routing, `direct` for the original Steam hosts. `run_notebook.py` and `python -m steam_crawler.pipeline` also accept `--endpoint-mode {proxy,direct}`, but `STEAM_ENDPOINT_MODE` takes priority when both are present.
 - Stage 1 CSV schema:
@@ -44,7 +45,7 @@
 - Stage 4:
   load Stage 3, filter eligible rows, sample without replacement using the fixed seed, and select `min(10000, eligible_count)` rows. Output a stable `sample_rank` so later reruns preserve order.
 - Stage 5:
-  for each sampled game, first page `filter=recent` until 500 unique review IDs or exhaustion; then page `filter=all&day_range=365` for helpful reviews until 500 additional unique reviews or exhaustion; if overlap leaves the total below 1,000, keep paging the helpful stream first, then recent, until 1,000 unique rows or both streams stop yielding new reviews. Use `language=all`, `review_type=all`, `purchase_type=all`, `num_per_page=100`, and keep the default off-topic filtering against the configured reviews endpoint. In `proxy` mode this is `https://gpaul.cc/steamstore/appreviews/{appid}`; in `direct` mode this is `https://store.steampowered.com/appreviews/{appid}`. Track per-app progress in `stage_05_progress.csv` so interruption does not require rereading the full review dataset. Unexpected exceptions should still persist a terminal `failed` progress row before being re-raised.
+  for each sampled game, first page `filter=recent` until 500 unique review IDs or exhaustion; then page `filter=all` for helpful reviews until 500 additional unique reviews or exhaustion; if overlap leaves the total below 1,000, keep paging the helpful stream first, then recent, until 1,000 unique rows or both streams stop yielding new reviews. Use `language=all`, `review_type=all`, `purchase_type=all`, `num_per_page=100`, and keep the default off-topic filtering against the configured reviews endpoint. In `proxy` mode this is `https://gpaul.cc/steamstore/appreviews/{appid}`; in `direct` mode this is `https://store.steampowered.com/appreviews/{appid}`. Track per-app progress in `stage_05_progress.csv` so interruption does not require rereading the full review dataset. Unexpected exceptions should still persist a terminal `failed` progress row before being re-raised. Stop a review stream after the configured repeated-cursor limit when those cursors yield no new unique review IDs so one app cannot spin forever on a cursor cycle.
 
 ## Notebook Behavior
 - The notebook should have one runnable section per stage plus one “run all missing stages” section. `run_notebook.py` should expose the same stage selection and smoke/full profile behavior for terminal execution.

@@ -178,6 +178,11 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(config.app_list_url, "https://api.steampowered.com/IStoreService/GetAppList/v1/")
         self.assertEqual(config.app_details_url, "https://store.steampowered.com/api/appdetails")
 
+    def test_config_from_env_prefers_cursor_loop_limit_env_over_override(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_CURSOR_LOOP_LIMIT": "12"}):
+            config = Config.from_env(self.root, review_cursor_loop_limit=4)
+        self.assertEqual(config.review_cursor_loop_limit, 12)
+
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []
 
@@ -340,6 +345,125 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(final_progress[-1]["status"], "completed")
         self.assertEqual(call_log.count(("recent", "*")), 1)
         self.assertEqual(call_log.count(("all", "*")), 2)
+
+    def test_stage_05_helpful_requests_do_not_send_day_range(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_04_selected_games.csv",
+            ["appid"],
+            [{"appid": 10}],
+        )
+
+        seen_params: list[dict[str, object]] = []
+
+        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_05":
+                raise AssertionError(stage)
+            seen_params.append(dict(params))
+            if str(params["filter"]) == "recent":
+                return {
+                    "reviews": [
+                        {
+                            "recommendationid": "r1",
+                            "author": {"steamid": "100"},
+                            "timestamp_created": 1,
+                            "review": "recent one",
+                        },
+                        {
+                            "recommendationid": "r2",
+                            "author": {"steamid": "101"},
+                            "timestamp_created": 2,
+                            "review": "recent two",
+                        },
+                    ],
+                    "cursor": "recent-done",
+                }
+            return {
+                "reviews": [
+                    {
+                        "recommendationid": "h1",
+                        "author": {"steamid": "200"},
+                        "timestamp_created": 3,
+                        "review": "helpful one",
+                    },
+                    {
+                        "recommendationid": "h2",
+                        "author": {"steamid": "201"},
+                        "timestamp_created": 4,
+                        "review": "helpful two",
+                    },
+                ],
+                "cursor": "helpful-done",
+            }
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(review_handler))
+        pipeline.run_stage_05()
+
+        helpful_params = [params for params in seen_params if str(params.get("filter")) == "all"]
+        self.assertTrue(helpful_params)
+        self.assertTrue(all("day_range" not in params for params in helpful_params))
+
+    def test_stage_05_stops_after_repeated_helpful_cursor_loop(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_04_selected_games.csv",
+            ["appid"],
+            [{"appid": 20}],
+        )
+
+        helpful_cursors = ["loop-a", "loop-b"]
+        helpful_index = {"value": 0}
+        helpful_calls = {"value": 0}
+
+        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_05":
+                raise AssertionError(stage)
+            if str(params["filter"]) == "recent":
+                return {
+                    "reviews": [
+                        {
+                            "recommendationid": "r1",
+                            "author": {"steamid": "100"},
+                            "timestamp_created": 1,
+                            "review": "recent one",
+                        },
+                        {
+                            "recommendationid": "r2",
+                            "author": {"steamid": "101"},
+                            "timestamp_created": 2,
+                            "review": "recent two",
+                        },
+                    ],
+                    "cursor": "recent-done",
+                }
+
+            helpful_calls["value"] += 1
+            cursor = helpful_cursors[helpful_index["value"] % len(helpful_cursors)]
+            helpful_index["value"] += 1
+            return {
+                "reviews": [
+                    {
+                        "recommendationid": "r1",
+                        "author": {"steamid": "100"},
+                        "timestamp_created": 1,
+                        "review": "recent one",
+                    },
+                    {
+                        "recommendationid": "r2",
+                        "author": {"steamid": "101"},
+                        "timestamp_created": 2,
+                        "review": "recent two",
+                    },
+                ],
+                "cursor": cursor,
+            }
+
+        pipeline = Pipeline(self.build_config(review_cursor_loop_limit=3), http_client=FakeHttpClient(review_handler))
+        result = pipeline.run_stage_05()
+
+        self.assertEqual(result.rows_written, 2)
+        progress_rows = read_csv(self.root / "data" / "stage_05_progress.csv")
+        self.assertEqual(progress_rows[-1]["status"], "exhausted")
+        self.assertEqual(progress_rows[-1]["total_unique"], "2")
+        self.assertEqual(helpful_calls["value"], 5)
 
     def test_stage_05_records_failed_progress_for_unexpected_exception_then_reraises(self) -> None:
         write_csv(
