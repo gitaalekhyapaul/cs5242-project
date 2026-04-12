@@ -250,6 +250,7 @@ class ReviewCollector:
         appid: int,
         review_filter: str,
         cursor: str,
+        day_range: int | None = None,
     ) -> dict[str, object]:
         params: dict[str, object] = {
             "json": 1,
@@ -260,6 +261,8 @@ class ReviewCollector:
             "num_per_page": self.config.reviews_page_size,
             "cursor": cursor,
         }
+        if day_range is not None:
+            params["day_range"] = day_range
         return self.http_client.get_json(
             self.config.app_reviews_url(appid),
             stage="stage_05",
@@ -276,6 +279,7 @@ class ReviewCollector:
         review_filter: str,
         source_stream: str,
         cursor: str,
+        day_range: int | None,
         inner_progress,
         seen_stream_cursors: dict[str, set[str]],
         repeated_cursor_counts: dict[str, int],
@@ -284,6 +288,7 @@ class ReviewCollector:
             appid=appid,
             review_filter=review_filter,
             cursor=cursor,
+            day_range=day_range,
         )
         reviews = payload.get("reviews", [])
         next_cursor = payload.get("cursor", cursor)
@@ -301,6 +306,8 @@ class ReviewCollector:
                 state.helpful_count += 1
             inner_progress.update(1)
             if source_stream == "recent" and state.phase == "recent_quota" and state.recent_count >= self.config.recent_quota:
+                break
+            if source_stream == "helpful" and state.phase == "helpful_fill" and state.helpful_count >= self.config.helpful_quota:
                 break
             if state.total_unique + len(collected) >= self.config.reviews_per_game:
                 break
@@ -355,7 +362,11 @@ class ReviewCollector:
         repeated_cursor_counts = {"recent": 0, "helpful": 0}
         try:
             # Phase 1: take a recent-review slice first to preserve a time-oriented sample.
-            while state.recent_count < self.config.recent_quota and not state.recent_exhausted:
+            while (
+                state.recent_count < self.config.recent_quota
+                and state.total_unique < self.config.reviews_per_game
+                and not state.recent_exhausted
+            ):
                 state.phase = "recent_quota"
                 page_rows = self._consume_page(
                     appid=appid,
@@ -364,14 +375,19 @@ class ReviewCollector:
                     review_filter="recent",
                     source_stream="recent",
                     cursor=state.recent_cursor,
+                    day_range=None,
                     inner_progress=inner_progress,
                     seen_stream_cursors=seen_stream_cursors,
                     repeated_cursor_counts=repeated_cursor_counts,
                 )
                 checkpoint(page_rows, state)
 
-            # Phase 2: fill the remainder from the helpful-ranking stream, deduplicating overlaps.
-            while state.total_unique < self.config.reviews_per_game and not state.helpful_exhausted:
+            # Phase 2: take a helpful-ranking slice and deduplicate overlaps against the recent quota.
+            while (
+                state.helpful_count < self.config.helpful_quota
+                and state.total_unique < self.config.reviews_per_game
+                and not state.helpful_exhausted
+            ):
                 state.phase = "helpful_fill"
                 page_rows = self._consume_page(
                     appid=appid,
@@ -380,13 +396,14 @@ class ReviewCollector:
                     review_filter="all",
                     source_stream="helpful",
                     cursor=state.helpful_cursor,
+                    day_range=365,
                     inner_progress=inner_progress,
                     seen_stream_cursors=seen_stream_cursors,
                     repeated_cursor_counts=repeated_cursor_counts,
                 )
                 checkpoint(page_rows, state)
 
-            # Phase 3: if helpful reviews exhaust early, continue paging recents as backfill.
+            # Phase 3: if the total is still low, continue paging recent reviews as backfill.
             while state.total_unique < self.config.reviews_per_game and not state.recent_exhausted:
                 state.phase = "recent_backfill"
                 page_rows = self._consume_page(
@@ -396,6 +413,7 @@ class ReviewCollector:
                     review_filter="recent",
                     source_stream="recent",
                     cursor=state.recent_cursor,
+                    day_range=None,
                     inner_progress=inner_progress,
                     seen_stream_cursors=seen_stream_cursors,
                     repeated_cursor_counts=repeated_cursor_counts,

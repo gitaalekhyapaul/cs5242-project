@@ -93,7 +93,7 @@ The main runtime logic is encapsulated in classes for readability and reuse:
 - `HttpClient`: shared retry/backoff HTTP client using `requests`.
 - `StagePaths`: centralizes output locations for all stages.
 - `ReviewCollectionState`: serializable per-game cursor and counter state for review resume.
-- `ReviewCollector`: encapsulates the `recent + helpful + backfill` review strategy.
+- `ReviewCollector`: encapsulates the `recent + helpful + recent-backfill` review strategy.
 - `Pipeline`: notebook-friendly orchestrator for all stages.
 
 ### Module map
@@ -484,7 +484,8 @@ These directories are ignored by git.
 - Stage 3 and Stage 4 are cheap enough to rerun from their prior CSVs.
 - Stage 5 skips games already marked `completed` or `exhausted` in `stage_05_progress.csv`.
 - Stage 5 appends review rows after each fetched page and appends cursor checkpoints after each page, so interrupted runs resume inside the current game instead of restarting it from scratch.
-- Stage 5 no longer sends `day_range=365` on the helpful stream, and it now stops a review stream after the configured repeated-cursor limit without any new unique reviews so one game cannot spin forever in a cursor cycle.
+- Stage 5 now pages the recent stream first up to the recent quota, then uses the helpful stream up to the helpful quota, and finally falls back to recent backfill if the unique review target is still not met.
+- Stage 5 sends `day_range=365` only on the helpful stream (`filter=all`), never on recent requests, and it stops a review stream after the configured repeated-cursor limit without any new unique reviews so one game cannot spin forever in a cursor cycle.
 - Stage 5 now records a terminal `failed` progress row even when an unexpected exception aborts the run, so resume state stays explicit.
 - If a crash happens after rows are flushed but before the latest cursor checkpoint is appended, the rerun reconstructs the existing review ids from the cached dataset and deduplicates them before continuing.
 

@@ -346,7 +346,7 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(call_log.count(("recent", "*")), 1)
         self.assertEqual(call_log.count(("all", "*")), 2)
 
-    def test_stage_05_helpful_requests_do_not_send_day_range(self) -> None:
+    def test_stage_05_day_range_is_only_sent_on_helpful_requests(self) -> None:
         write_csv(
             self.root / "data" / "stage_04_selected_games.csv",
             ["appid"],
@@ -399,8 +399,11 @@ class PipelineResumeTests(unittest.TestCase):
         pipeline.run_stage_05()
 
         helpful_params = [params for params in seen_params if str(params.get("filter")) == "all"]
+        recent_params = [params for params in seen_params if str(params.get("filter")) == "recent"]
         self.assertTrue(helpful_params)
-        self.assertTrue(all("day_range" not in params for params in helpful_params))
+        self.assertTrue(recent_params)
+        self.assertTrue(all(params.get("day_range") == 365 for params in helpful_params))
+        self.assertTrue(all("day_range" not in params for params in recent_params))
 
     def test_stage_05_stops_after_repeated_helpful_cursor_loop(self) -> None:
         write_csv(
@@ -435,26 +438,27 @@ class PipelineResumeTests(unittest.TestCase):
                     "cursor": "recent-done",
                 }
 
-            helpful_calls["value"] += 1
-            cursor = helpful_cursors[helpful_index["value"] % len(helpful_cursors)]
-            helpful_index["value"] += 1
-            return {
-                "reviews": [
-                    {
-                        "recommendationid": "r1",
-                        "author": {"steamid": "100"},
-                        "timestamp_created": 1,
-                        "review": "recent one",
-                    },
-                    {
-                        "recommendationid": "r2",
-                        "author": {"steamid": "101"},
-                        "timestamp_created": 2,
-                        "review": "recent two",
-                    },
-                ],
-                "cursor": cursor,
-            }
+            if str(params["filter"]) == "all":
+                helpful_calls["value"] += 1
+                cursor = helpful_cursors[helpful_index["value"] % len(helpful_cursors)]
+                helpful_index["value"] += 1
+                return {
+                    "reviews": [
+                        {
+                            "author": {"steamid": "100"},
+                            "timestamp_created": 1,
+                            "review": "helpful duplicate one",
+                        },
+                        {
+                            "author": {"steamid": "101"},
+                            "timestamp_created": 2,
+                            "review": "helpful duplicate two",
+                        },
+                    ],
+                    "cursor": cursor,
+                }
+
+            raise AssertionError(params)
 
         pipeline = Pipeline(self.build_config(review_cursor_loop_limit=3), http_client=FakeHttpClient(review_handler))
         result = pipeline.run_stage_05()
