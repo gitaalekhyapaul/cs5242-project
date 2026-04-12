@@ -198,6 +198,7 @@ Endpoint selection is also environment-driven:
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. If the env var is set, it takes priority over the CLI flag.
 Both terminal entrypoints also accept `--gap-delay <seconds>` to override the `429` cooling-off gap without editing the profile config.
+When you pass `--max-apps N`, stages 2 and 3 operate on the first `N` app ids from Stage 1 as a total scope across reruns, not `N` additional appdetails fetches per invocation.
 
 The notebook uses two profiles:
 

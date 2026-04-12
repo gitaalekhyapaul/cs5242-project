@@ -577,8 +577,13 @@ class Pipeline:
                     path.unlink()
 
         completed_ids = _read_completed_ids(self.stage_02_path)
-        total_apps = _count_csv_rows(self.stage_01_path)
-        if total_apps > 0 and len(completed_ids) >= total_apps and not force_refresh:
+        source_rows = list(_iter_csv_rows(self.stage_01_path))
+        if max_apps is not None:
+            source_rows = source_rows[:max_apps]
+        total_apps = len(source_rows)
+        scoped_appids = {int(row["appid"]) for row in source_rows}
+        completed_scoped_ids = completed_ids & scoped_appids
+        if total_apps > 0 and len(completed_scoped_ids) >= total_apps and not force_refresh:
             self.logger.info("Reusing cached stage 02 output: %s", self.stage_02_path)
             return self._result(
                 "stage_02",
@@ -589,16 +594,12 @@ class Pipeline:
                 retry_count_start=retry_count_start,
                 error_count_start=error_count_start,
             )
-        apps_processed = 0
-        progress = _progress_bar(total=total_apps, initial=len(completed_ids), desc="Stage 2 appdetails", unit="apps")
+        progress = _progress_bar(total=total_apps, initial=len(completed_scoped_ids), desc="Stage 2 appdetails", unit="apps")
         try:
-            for row in _iter_csv_rows(self.stage_01_path):
+            for row in source_rows:
                 appid = int(row["appid"])
                 if appid in completed_ids:
                     continue
-                if max_apps is not None and apps_processed >= max_apps:
-                    break
-                apps_processed += 1
                 params = {
                     "appids": appid,
                     "cc": self.config.appdetails_country_code,
@@ -890,7 +891,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Endpoint mode. Ignored when STEAM_ENDPOINT_MODE is set in the environment or .env.",
     )
     parser.add_argument("--max-pages", type=int, default=None, help="Optional smoke-test limit for stage 1 page count.")
-    parser.add_argument("--max-apps", type=int, default=None, help="Optional smoke-test limit for stage 2/3 app count.")
+    parser.add_argument(
+        "--max-apps",
+        type=int,
+        default=None,
+        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns.",
+    )
     parser.add_argument("--sample-size", type=int, default=None, help="Optional sample-size override for stage 4.")
     parser.add_argument("--max-games", type=int, default=None, help="Optional smoke-test limit for stage 5 game count.")
     parser.add_argument(

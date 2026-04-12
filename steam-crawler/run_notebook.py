@@ -227,7 +227,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--max-apps",
         type=int,
         default=None,
-        help="Optional override for the stage 2/3 app limit.",
+        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns.",
     )
     parser.add_argument(
         "--sample-size",

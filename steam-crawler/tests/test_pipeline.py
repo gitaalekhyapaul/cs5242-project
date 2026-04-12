@@ -112,6 +112,65 @@ class PipelineResumeTests(unittest.TestCase):
         resumed_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
         self.assertEqual([row["appid"] for row in resumed_rows], ["1", "2", "3"])
 
+    def test_stage_02_max_apps_caps_total_scope_across_reruns(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_01_apps_catalog.csv",
+            ["appid", "name", "last_modified", "price_change_number", "raw_json"],
+            [
+                {"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {"appid": 2, "name": "Two", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {"appid": 3, "name": "Three", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+            ],
+        )
+        stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
+        stage_02_path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(stage_02_path, "wt", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "appid",
+                    "success",
+                    "type",
+                    "category_ids",
+                    "category_descriptions",
+                    "recommendations_total",
+                    "raw_json",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "appid": 1,
+                    "success": "True",
+                    "type": "game",
+                    "category_ids": "",
+                    "category_descriptions": "",
+                    "recommendations_total": "10000",
+                    "raw_json": "{}",
+                }
+            )
+
+        seen_appids: list[int] = []
+
+        def handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+            if stage != "stage_02":
+                raise AssertionError(stage)
+            assert appid is not None
+            seen_appids.append(appid)
+            return {
+                str(appid): {
+                    "success": True,
+                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                }
+            }
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(handler))
+        pipeline.run_stage_02(max_apps=2)
+
+        rows = read_csv(stage_02_path)
+        self.assertEqual([row["appid"] for row in rows], ["1", "2"])
+        self.assertEqual(seen_appids, [2])
+
     def test_config_from_env_prefers_endpoint_mode_env_over_override(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}):
             config = Config.from_env(self.root, endpoint_mode="proxy")
