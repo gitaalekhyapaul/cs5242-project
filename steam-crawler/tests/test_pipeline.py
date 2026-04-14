@@ -23,6 +23,23 @@ from steam_crawler.config import (
 from steam_crawler.pipeline import Pipeline
 
 
+CSV_FIELD_SIZE_LIMIT_READY = False
+
+
+def configure_csv_field_size_limit() -> None:
+    global CSV_FIELD_SIZE_LIMIT_READY
+    if CSV_FIELD_SIZE_LIMIT_READY:
+        return
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            CSV_FIELD_SIZE_LIMIT_READY = True
+            return
+        except OverflowError:
+            limit //= 10
+
+
 def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -32,6 +49,7 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]]) 
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
+    configure_csv_field_size_limit()
     if path.suffix == ".gz":
         opener = gzip.open
     else:
@@ -178,6 +196,57 @@ class PipelineResumeTests(unittest.TestCase):
         rows = read_csv(stage_02_path)
         self.assertEqual([row["appid"] for row in rows], ["1", "2"])
         self.assertEqual(seen_appids, [2])
+
+    def test_stage_chain_handles_large_csv_fields_from_stage_02_onward(self) -> None:
+        write_csv(
+            self.root / "data" / "stage_01_apps_catalog.csv",
+            ["appid", "name", "last_modified", "price_change_number", "raw_json"],
+            [{"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"}],
+        )
+        stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
+        stage_02_path.parent.mkdir(parents=True, exist_ok=True)
+        large_payload = "x" * 200_000
+        with gzip.open(stage_02_path, "wt", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(
+                handle,
+                fieldnames=[
+                    "appid",
+                    "success",
+                    "type",
+                    "category_ids",
+                    "category_descriptions",
+                    "recommendations_total",
+                    "raw_json",
+                ],
+            )
+            writer.writeheader()
+            writer.writerow(
+                {
+                    "appid": 1,
+                    "success": "True",
+                    "type": "game",
+                    "category_ids": "",
+                    "category_descriptions": "",
+                    "recommendations_total": "10000",
+                    "raw_json": large_payload,
+                }
+            )
+
+        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(lambda **_: {}))
+
+        stage_03_result = pipeline.run_stage_03()
+        self.assertEqual(stage_03_result.rows_written, 1)
+        stage_03_rows = read_csv(self.root / "data" / "stage_03_apps_with_metadata.csv.gz")
+        self.assertEqual(stage_03_rows[0]["eligible_for_sampling"], "True")
+        self.assertEqual(stage_03_rows[0]["raw_details_json"], large_payload)
+
+        stage_04_result = pipeline.run_stage_04(sample_size=1)
+        self.assertEqual(stage_04_result.rows_written, 1)
+        stage_04_rows = read_csv(self.root / "data" / "stage_04_selected_games.csv")
+        self.assertEqual(stage_04_rows[0]["appid"], "1")
+
+        stage_05_result = pipeline.run_stage_05(max_games=0)
+        self.assertEqual(stage_05_result.rows_written, 0)
 
     def test_config_from_env_prefers_endpoint_mode_override_over_env(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}):

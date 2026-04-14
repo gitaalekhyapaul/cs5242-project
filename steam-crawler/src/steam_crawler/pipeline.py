@@ -83,6 +83,9 @@ STAGE_05_PROGRESS_FIELDS = [
 ]
 
 
+CSV_FIELD_SIZE_LIMIT_READY = False
+
+
 def _is_notebook_runtime() -> bool:
     try:
         from IPython import get_ipython
@@ -208,7 +211,22 @@ def _open_text(path: Path, mode: str):
     return path.open(mode, newline="", encoding="utf-8")
 
 
+def _configure_csv_field_size_limit() -> None:
+    global CSV_FIELD_SIZE_LIMIT_READY
+    if CSV_FIELD_SIZE_LIMIT_READY:
+        return
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            CSV_FIELD_SIZE_LIMIT_READY = True
+            return
+        except OverflowError:
+            limit //= 10
+
+
 def _iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
+    _configure_csv_field_size_limit()
     with _open_text(path, "rt") as handle:
         reader = csv.DictReader(handle)
         yield from reader
@@ -217,7 +235,11 @@ def _iter_csv_rows(path: Path) -> Iterator[dict[str, str]]:
 def _count_csv_rows(path: Path) -> int:
     if not path.exists():
         return 0
-    return sum(1 for _ in _iter_csv_rows(path))
+    _configure_csv_field_size_limit()
+    with _open_text(path, "rt") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return sum(1 for _ in reader)
 
 
 def _read_completed_ids(path: Path, key: str = "appid") -> set[int]:
