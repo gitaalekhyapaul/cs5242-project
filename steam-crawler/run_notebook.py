@@ -22,7 +22,15 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from steam_crawler import Config, Pipeline
-from steam_crawler.config import load_project_env, resolve_endpoint_mode
+from steam_crawler.config import (
+    load_project_env,
+    resolve_endpoint_mode,
+    resolve_max_apps,
+    resolve_max_games,
+    resolve_max_pages,
+    resolve_non_negative_int,
+    resolve_rate_limit_gap_delay_sec,
+)
 
 
 PREFLIGHT_TIMEOUT_SEC = 30
@@ -223,31 +231,31 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--max-pages",
         type=int,
         default=None,
-        help="Optional override for the stage 1 page limit.",
+        help="Optional override for the stage 1 page limit. Overrides STEAM_MAX_PAGES from the environment or .env.",
     )
     parser.add_argument(
         "--max-apps",
         type=int,
         default=None,
-        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns.",
+        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns. Overrides STEAM_MAX_APPS from the environment or .env.",
     )
     parser.add_argument(
         "--sample-size",
         type=int,
         default=None,
-        help="Optional override for the stage 4 sample size.",
+        help="Optional override for the stage 4 sample size. Overrides STEAM_SAMPLE_SIZE from the environment or .env.",
     )
     parser.add_argument(
         "--max-games",
         type=int,
         default=None,
-        help="Optional override for the stage 5 game limit.",
+        help="Optional override for the stage 5 game limit. Overrides STEAM_MAX_GAMES from the environment or .env.",
     )
     parser.add_argument(
         "--gap-delay",
         type=float,
         default=None,
-        help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
+        help="Optional override for the 429 rate-limit cooling-off gap, in seconds. Overrides STEAM_GAP_DELAY from the environment or .env.",
     )
     parser.add_argument(
         "--loop-limit",
@@ -334,19 +342,29 @@ def main() -> int:
         run_preflight(root_dir, endpoint_mode=endpoint_mode)
 
     active_config, active_limits = build_active_config(run_mode)
+    max_pages = resolve_max_pages(args.max_pages)
+    max_apps = resolve_max_apps(args.max_apps)
+    sample_size = resolve_non_negative_int(
+        args.sample_size,
+        env_names="STEAM_SAMPLE_SIZE",
+        default=None,
+        label="STEAM_SAMPLE_SIZE",
+    )
+    max_games = resolve_max_games(args.max_games)
     active_limits = apply_limit_overrides(
         active_limits,
-        max_pages=args.max_pages,
-        max_apps=args.max_apps,
-        sample_size=args.sample_size,
-        max_games=args.max_games,
+        max_pages=max_pages,
+        max_apps=max_apps,
+        sample_size=sample_size,
+        max_games=max_games,
     )
-    if args.gap_delay is not None:
-        active_config["rate_limit_gap_delay_sec"] = args.gap_delay
+    active_config["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(args.gap_delay)
     if args.loop_limit is not None:
         active_config["review_cursor_loop_limit"] = args.loop_limit
     if args.data_dir is not None:
         active_config["data_dir"] = args.data_dir
+    if sample_size is not None:
+        active_config["sample_size"] = sample_size
 
     settings = Config.from_env(root_dir, endpoint_mode=endpoint_mode, **active_config)
     pipeline = Pipeline(settings)

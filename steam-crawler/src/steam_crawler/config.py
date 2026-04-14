@@ -14,6 +14,56 @@ DIRECT_API_BASE_URL = "https://api.steampowered.com"
 DIRECT_STORE_BASE_URL = "https://store.steampowered.com"
 
 
+def _first_env_value(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value
+    return None
+
+
+def resolve_non_negative_int(
+    cli_value: int | None = None,
+    *,
+    env_names: str | tuple[str, ...],
+    default: int | None = None,
+    label: str,
+) -> int | None:
+    names = (env_names,) if isinstance(env_names, str) else env_names
+    raw_value = _first_env_value(*names)
+    resolved = cli_value if cli_value is not None else raw_value
+    if resolved is None:
+        return default
+    try:
+        value = int(resolved)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {label}: {resolved!r}. Expected a non-negative integer.") from exc
+    if value < 0:
+        raise ValueError(f"Invalid {label}: {value!r}. Expected a non-negative integer.")
+    return value
+
+
+def resolve_non_negative_float(
+    cli_value: float | None = None,
+    *,
+    env_names: str | tuple[str, ...],
+    default: float | None = None,
+    label: str,
+) -> float | None:
+    names = (env_names,) if isinstance(env_names, str) else env_names
+    raw_value = _first_env_value(*names)
+    resolved = cli_value if cli_value is not None else raw_value
+    if resolved is None:
+        return default
+    try:
+        value = float(resolved)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid {label}: {resolved!r}. Expected a non-negative number.") from exc
+    if value < 0:
+        raise ValueError(f"Invalid {label}: {value!r}. Expected a non-negative number.")
+    return value
+
+
 def resolve_endpoint_mode(cli_value: str | None = None) -> str:
     endpoint_mode = (cli_value or os.getenv("STEAM_ENDPOINT_MODE") or "proxy").strip().lower()
     if endpoint_mode not in ENDPOINT_MODES:
@@ -22,21 +72,67 @@ def resolve_endpoint_mode(cli_value: str | None = None) -> str:
 
 
 def resolve_review_cursor_loop_limit(cli_value: int | None = None) -> int:
-    raw_value = os.getenv("STEAM_CURSOR_LOOP_LIMIT")
-    resolved = cli_value if cli_value is not None else raw_value
-    if resolved is None:
-        return 10
-    try:
-        loop_limit = int(resolved)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Invalid STEAM_CURSOR_LOOP_LIMIT: {resolved!r}. Expected a positive integer."
-        ) from exc
+    loop_limit = resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_CURSOR_LOOP_LIMIT",
+        default=10,
+        label="STEAM_CURSOR_LOOP_LIMIT",
+    )
+    assert loop_limit is not None
     if loop_limit <= 0:
         raise ValueError(
             f"Invalid STEAM_CURSOR_LOOP_LIMIT: {loop_limit!r}. Expected a positive integer."
         )
     return loop_limit
+
+
+def resolve_sample_size(cli_value: int | None = None, *, default: int = 10_000) -> int:
+    sample_size = resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_SAMPLE_SIZE",
+        default=default,
+        label="STEAM_SAMPLE_SIZE",
+    )
+    assert sample_size is not None
+    return sample_size
+
+
+def resolve_max_pages(cli_value: int | None = None) -> int | None:
+    return resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_MAX_PAGES",
+        default=None,
+        label="STEAM_MAX_PAGES",
+    )
+
+
+def resolve_max_apps(cli_value: int | None = None) -> int | None:
+    return resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_MAX_APPS",
+        default=None,
+        label="STEAM_MAX_APPS",
+    )
+
+
+def resolve_max_games(cli_value: int | None = None) -> int | None:
+    return resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_MAX_GAMES",
+        default=None,
+        label="STEAM_MAX_GAMES",
+    )
+
+
+def resolve_rate_limit_gap_delay_sec(cli_value: float | None = None, *, default: float = 300.0) -> float:
+    gap_delay = resolve_non_negative_float(
+        cli_value,
+        env_names=("STEAM_GAP_DELAY", "STEAM_RATE_LIMIT_GAP_DELAY_SEC"),
+        default=default,
+        label="STEAM_GAP_DELAY",
+    )
+    assert gap_delay is not None
+    return gap_delay
 
 
 def resolve_data_dir(root_dir: Path, cli_value: str | Path | None = None) -> Path:
@@ -132,6 +228,12 @@ class Config:
         review_cursor_loop_limit = resolve_review_cursor_loop_limit(
             int(loop_limit_override) if loop_limit_override is not None else None
         )
+        sample_size_override = overrides.get("sample_size")
+        sample_size = resolve_sample_size(int(sample_size_override) if sample_size_override is not None else None)
+        gap_delay_override = overrides.get("rate_limit_gap_delay_sec")
+        rate_limit_gap_delay_sec = resolve_rate_limit_gap_delay_sec(
+            float(gap_delay_override) if gap_delay_override is not None else None
+        )
         data_dir_override = overrides.get("data_dir")
         data_dir = resolve_data_dir(resolved_root, data_dir_override)
 
@@ -140,6 +242,8 @@ class Config:
             steam_api_key=api_key,
             data_dir=data_dir,
             log_dir=resolved_root / "logs",
+            sample_size=sample_size,
+            rate_limit_gap_delay_sec=rate_limit_gap_delay_sec,
             endpoint_mode=endpoint_mode,
             review_cursor_loop_limit=review_cursor_loop_limit,
         )
@@ -147,6 +251,8 @@ class Config:
             merged_overrides = dict(overrides)
             merged_overrides["endpoint_mode"] = endpoint_mode
             merged_overrides["review_cursor_loop_limit"] = review_cursor_loop_limit
+            merged_overrides["sample_size"] = sample_size
+            merged_overrides["rate_limit_gap_delay_sec"] = rate_limit_gap_delay_sec
             merged_overrides["data_dir"] = data_dir
             settings = replace(settings, **merged_overrides)
         return settings

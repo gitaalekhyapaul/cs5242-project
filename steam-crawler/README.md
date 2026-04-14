@@ -197,9 +197,18 @@ Endpoint selection is also environment-driven:
 - `STEAM_ENDPOINT_MODE=direct`: uses `https://api.steampowered.com` and `https://store.steampowered.com`
 - `STEAM_CURSOR_LOOP_LIMIT=10`: default stop-gap for repeated no-yield review cursors in Stage 5
 - `STEAM_DATA_DIR=/path/to/stage-data`: optional override for stage CSV / gzip outputs; when relative, it is resolved under the crawler root
+- `STEAM_SAMPLE_SIZE=10000`: optional Stage 4 sample-size override
+- `STEAM_MAX_PAGES=1`: optional Stage 1 page cap
+- `STEAM_MAX_APPS=25`: optional Stage 2 and Stage 3 app cap
+- `STEAM_MAX_GAMES=2`: optional Stage 5 game cap
+- `STEAM_GAP_DELAY=300`: optional `429` cooling-off gap in seconds
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. The CLI flag overrides `STEAM_ENDPOINT_MODE` from the environment or `.env`.
-Both terminal entrypoints also accept `--gap-delay <seconds>` to override the `429` cooling-off gap without editing the profile config.
+Both terminal entrypoints also accept `--max-pages <count>` to override `STEAM_MAX_PAGES` from the environment or `.env`.
+Both terminal entrypoints also accept `--max-apps <count>` to override `STEAM_MAX_APPS` from the environment or `.env`.
+Both terminal entrypoints also accept `--sample-size <count>` to override `STEAM_SAMPLE_SIZE` from the environment or `.env`.
+Both terminal entrypoints also accept `--max-games <count>` to override `STEAM_MAX_GAMES` from the environment or `.env`.
+Both terminal entrypoints also accept `--gap-delay <seconds>` to override `STEAM_GAP_DELAY` from the environment or `.env`.
 Both terminal entrypoints also accept `--loop-limit <count>` to override the Stage 5 repeated-cursor stop-gap, and the CLI flag overrides `STEAM_CURSOR_LOOP_LIMIT` from the environment or `.env`.
 Both terminal entrypoints also accept `--data-dir <path>` to override stage output storage, and the CLI flag overrides `STEAM_DATA_DIR` from the environment or `.env`.
 `progress_monitor.py` mirrors `notebooks/progress_monitor.ipynb` as a plain terminal script so you can inspect crawl progress on a compute node without Jupyter.

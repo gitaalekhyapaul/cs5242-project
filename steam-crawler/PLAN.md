@@ -15,10 +15,11 @@
 - The production runtime defaults to the proxy bases `https://gpaul.cc/steamapi` and `https://gpaul.cc/steamstore`, but can switch back to the original Steam hosts when `STEAM_ENDPOINT_MODE=direct` is set. If both env and CLI endpoint mode are set, the CLI flag wins.
 - Stage 5's repeated-cursor stop-gap defaults to `STEAM_CURSOR_LOOP_LIMIT=10`; `--loop-limit` is available on both terminal runners, and the CLI flag wins if both are set.
 - Stage outputs default to `<root>/data`, but `STEAM_DATA_DIR` or `--data-dir` can relocate the staged CSV / gzip outputs. If both are set, the CLI flag wins.
+- Stage limits can also be driven by `STEAM_MAX_PAGES`, `STEAM_MAX_APPS`, `STEAM_SAMPLE_SIZE`, `STEAM_MAX_GAMES`, and `STEAM_GAP_DELAY`; the corresponding CLI flags win if both are set.
 
 ## Interfaces
 - Config can come from notebook cells, `run_notebook.py`, or env vars:
-  `STEAM_API_KEY`, `STEAM_ENDPOINT_MODE`, `STEAM_CURSOR_LOOP_LIMIT`, `STEAM_DATA_DIR`, `sample_size=10000`, `min_recommendations=5000`, `reviews_per_game=1000`, `recent_quota=500`, `helpful_quota=500`, `random_seed=5242`, `request_timeout_sec`, `max_retries`, `base_backoff_sec`, `max_backoff_sec`.
+  `STEAM_API_KEY`, `STEAM_RUN_MODE`, `STEAM_ENDPOINT_MODE`, `STEAM_CURSOR_LOOP_LIMIT`, `STEAM_DATA_DIR`, `STEAM_SAMPLE_SIZE`, `STEAM_MAX_PAGES`, `STEAM_MAX_APPS`, `STEAM_MAX_GAMES`, `STEAM_GAP_DELAY`.
 - Endpoint mode values:
   `proxy` for `gpaul.cc` routing, `direct` for the original Steam hosts. `run_notebook.py` and `python -m steam_crawler.pipeline` also accept `--endpoint-mode {proxy,direct}`, and the CLI flag takes priority when both are present.
 - Stage 1 CSV schema:

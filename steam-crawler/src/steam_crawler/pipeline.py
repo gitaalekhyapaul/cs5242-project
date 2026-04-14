@@ -12,7 +12,15 @@ from typing import Callable, Iterator
 
 from tqdm.auto import tqdm as auto_tqdm
 
-from .config import Config
+from .config import (
+    Config,
+    load_project_env,
+    resolve_endpoint_mode,
+    resolve_max_apps,
+    resolve_max_games,
+    resolve_max_pages,
+    resolve_rate_limit_gap_delay_sec,
+)
 from .http_client import HttpClient
 from .logging_utils import CsvErrorLogger, setup_logger
 from .transforms import (
@@ -937,20 +945,35 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="Endpoint mode. Overrides STEAM_ENDPOINT_MODE from the environment or .env.",
     )
-    parser.add_argument("--max-pages", type=int, default=None, help="Optional smoke-test limit for stage 1 page count.")
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="Optional stage 1 page cap. Overrides STEAM_MAX_PAGES from the environment or .env.",
+    )
     parser.add_argument(
         "--max-apps",
         type=int,
         default=None,
-        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns.",
+        help="Optional total cap for the first N Stage 1 app ids considered by stages 2 and 3 across reruns. Overrides STEAM_MAX_APPS from the environment or .env.",
     )
-    parser.add_argument("--sample-size", type=int, default=None, help="Optional sample-size override for stage 4.")
-    parser.add_argument("--max-games", type=int, default=None, help="Optional smoke-test limit for stage 5 game count.")
+    parser.add_argument(
+        "--sample-size",
+        type=int,
+        default=None,
+        help="Optional stage 4 sample-size override. Overrides STEAM_SAMPLE_SIZE from the environment or .env.",
+    )
+    parser.add_argument(
+        "--max-games",
+        type=int,
+        default=None,
+        help="Optional stage 5 game cap. Overrides STEAM_MAX_GAMES from the environment or .env.",
+    )
     parser.add_argument(
         "--gap-delay",
         type=float,
         default=None,
-        help="Optional override for the 429 rate-limit cooling-off gap, in seconds.",
+        help="Optional override for the 429 rate-limit cooling-off gap, in seconds. Overrides STEAM_GAP_DELAY from the environment or .env.",
     )
     parser.add_argument(
         "--loop-limit",
@@ -965,27 +988,30 @@ def build_argument_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
+    load_project_env(args.root)
     config_overrides: dict[str, object] = {"endpoint_mode": args.endpoint_mode}
-    if args.gap_delay is not None:
-        config_overrides["rate_limit_gap_delay_sec"] = args.gap_delay
+    config_overrides["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(args.gap_delay)
     if args.loop_limit is not None:
         config_overrides["review_cursor_loop_limit"] = args.loop_limit
     if args.data_dir is not None:
         config_overrides["data_dir"] = args.data_dir
+    max_pages = resolve_max_pages(args.max_pages)
+    max_apps = resolve_max_apps(args.max_apps)
+    max_games = resolve_max_games(args.max_games)
     config = Config.from_env(args.root, **config_overrides)
     pipeline = Pipeline(config)
     dispatch = {
-        "stage1": lambda: pipeline.run_stage_01(force_refresh=args.force_refresh, max_pages=args.max_pages),
-        "stage2": lambda: pipeline.run_stage_02(force_refresh=args.force_refresh, max_apps=args.max_apps),
-        "stage3": lambda: pipeline.run_stage_03(force_refresh=args.force_refresh, max_apps=args.max_apps),
+        "stage1": lambda: pipeline.run_stage_01(force_refresh=args.force_refresh, max_pages=max_pages),
+        "stage2": lambda: pipeline.run_stage_02(force_refresh=args.force_refresh, max_apps=max_apps),
+        "stage3": lambda: pipeline.run_stage_03(force_refresh=args.force_refresh, max_apps=max_apps),
         "stage4": lambda: pipeline.run_stage_04(force_refresh=args.force_refresh, sample_size=args.sample_size),
-        "stage5": lambda: pipeline.run_stage_05(force_refresh=args.force_refresh, max_games=args.max_games),
+        "stage5": lambda: pipeline.run_stage_05(force_refresh=args.force_refresh, max_games=max_games),
         "all": lambda: pipeline.run_all_missing(
             force_refresh=args.force_refresh,
-            max_pages=args.max_pages,
-            max_apps=args.max_apps,
+            max_pages=max_pages,
+            max_apps=max_apps,
             sample_size=args.sample_size,
-            max_games=args.max_games,
+            max_games=max_games,
         ),
     }
     dispatch[args.stage]()

@@ -11,7 +11,15 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from steam_crawler.config import Config, load_project_env
+from steam_crawler.config import (
+    Config,
+    load_project_env,
+    resolve_max_apps,
+    resolve_max_games,
+    resolve_max_pages,
+    resolve_rate_limit_gap_delay_sec,
+    resolve_sample_size,
+)
 from steam_crawler.pipeline import Pipeline
 
 
@@ -188,6 +196,16 @@ class PipelineResumeTests(unittest.TestCase):
             config = Config.from_env(self.root, data_dir=self.root / "custom-data")
         self.assertEqual(config.data_dir, (self.root / "custom-data").resolve())
 
+    def test_config_from_env_prefers_sample_size_override_over_env(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_SAMPLE_SIZE": "12"}):
+            config = Config.from_env(self.root, sample_size=4)
+        self.assertEqual(config.sample_size, 4)
+
+    def test_config_from_env_loads_gap_delay_from_env_when_no_override_is_passed(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_GAP_DELAY": "12.5"}):
+            config = Config.from_env(self.root)
+        self.assertEqual(config.rate_limit_gap_delay_sec, 12.5)
+
     def test_config_from_env_loads_data_dir_from_dotenv_when_no_override_is_passed(self) -> None:
         (self.root / ".env").write_text("STEAM_API_KEY=test-key\nSTEAM_DATA_DIR=cluster-data\n", encoding="utf-8")
         with patch.dict(os.environ, {}, clear=True):
@@ -204,6 +222,42 @@ class PipelineResumeTests(unittest.TestCase):
             env_path.write_text("STEAM_DATA_DIR=second\n", encoding="utf-8")
             load_project_env(self.root)
             self.assertEqual(os.environ["STEAM_DATA_DIR"], "second")
+
+    def test_stage_limit_and_sample_resolvers_prefer_override_over_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STEAM_MAX_PAGES": "10",
+                "STEAM_MAX_APPS": "20",
+                "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_MAX_GAMES": "40",
+                "STEAM_GAP_DELAY": "50.5",
+            },
+            clear=True,
+        ):
+            self.assertEqual(resolve_max_pages(1), 1)
+            self.assertEqual(resolve_max_apps(2), 2)
+            self.assertEqual(resolve_sample_size(3), 3)
+            self.assertEqual(resolve_max_games(4), 4)
+            self.assertEqual(resolve_rate_limit_gap_delay_sec(5.5), 5.5)
+
+    def test_stage_limit_and_sample_resolvers_use_env_when_no_override_is_passed(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STEAM_MAX_PAGES": "10",
+                "STEAM_MAX_APPS": "20",
+                "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_MAX_GAMES": "40",
+                "STEAM_GAP_DELAY": "50.5",
+            },
+            clear=True,
+        ):
+            self.assertEqual(resolve_max_pages(), 10)
+            self.assertEqual(resolve_max_apps(), 20)
+            self.assertEqual(resolve_sample_size(), 30)
+            self.assertEqual(resolve_max_games(), 40)
+            self.assertEqual(resolve_rate_limit_gap_delay_sec(), 50.5)
 
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []
