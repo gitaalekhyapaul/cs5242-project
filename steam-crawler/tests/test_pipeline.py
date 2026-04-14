@@ -20,6 +20,7 @@ from steam_crawler.config import (
     resolve_rate_limit_gap_delay_sec,
     resolve_sample_size,
 )
+import steam_crawler.pipeline as pipeline_module
 from steam_crawler.pipeline import Pipeline
 
 
@@ -327,6 +328,15 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_sample_size(), 30)
             self.assertEqual(resolve_max_games(), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(), 50.5)
+
+    def test_progress_bar_falls_back_when_notebook_widgets_are_unavailable(self) -> None:
+        with patch.object(pipeline_module, "_is_notebook_runtime", return_value=True):
+            with patch("tqdm.notebook.tqdm", side_effect=ImportError("IProgress not found")):
+                progress = pipeline_module._progress_bar(total=1, desc="test", unit="items")
+                try:
+                    self.assertNotEqual(type(progress).__module__, "tqdm.notebook")
+                finally:
+                    progress.close()
 
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []

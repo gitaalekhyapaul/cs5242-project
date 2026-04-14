@@ -10,7 +10,7 @@ from pathlib import Path
 from time import perf_counter
 from typing import Callable, Iterator
 
-from tqdm.auto import tqdm as auto_tqdm
+from tqdm import tqdm as text_tqdm
 
 from .config import (
     Config,
@@ -99,10 +99,15 @@ def _progress_bar(*args, **kwargs):
     kwargs.setdefault("file", sys.stdout)
     # Prefer notebook-native progress bars when the pipeline is invoked from Jupyter.
     if _is_notebook_runtime():
-        from tqdm.notebook import tqdm as notebook_tqdm
+        try:
+            from tqdm.notebook import tqdm as notebook_tqdm
 
-        return notebook_tqdm(*args, **kwargs)
-    return auto_tqdm(*args, **kwargs)
+            return notebook_tqdm(*args, **kwargs)
+        except (ImportError, AttributeError):
+            # Some cluster notebook kernels do not have ipywidgets/IProgress installed.
+            # Fall back to a plain text tqdm bar instead of crashing the stage.
+            pass
+    return text_tqdm(*args, **kwargs)
 
 
 def _parse_bool(value: object) -> bool:
