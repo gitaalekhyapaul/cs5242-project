@@ -171,21 +171,27 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual([row["appid"] for row in rows], ["1", "2"])
         self.assertEqual(seen_appids, [2])
 
-    def test_config_from_env_prefers_endpoint_mode_env_over_override(self) -> None:
+    def test_config_from_env_prefers_endpoint_mode_override_over_env(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}):
             config = Config.from_env(self.root, endpoint_mode="proxy")
-        self.assertEqual(config.endpoint_mode, "direct")
-        self.assertEqual(config.app_list_url, "https://api.steampowered.com/IStoreService/GetAppList/v1/")
-        self.assertEqual(config.app_details_url, "https://store.steampowered.com/api/appdetails")
+        self.assertEqual(config.endpoint_mode, "proxy")
+        self.assertEqual(config.app_list_url, "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/")
+        self.assertEqual(config.app_details_url, "https://gpaul.cc/steamstore/api/appdetails")
 
-    def test_config_from_env_prefers_cursor_loop_limit_env_over_override(self) -> None:
+    def test_config_from_env_prefers_cursor_loop_limit_override_over_env(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_CURSOR_LOOP_LIMIT": "12"}):
             config = Config.from_env(self.root, review_cursor_loop_limit=4)
-        self.assertEqual(config.review_cursor_loop_limit, 12)
+        self.assertEqual(config.review_cursor_loop_limit, 4)
 
-    def test_config_from_env_prefers_data_dir_env_over_override(self) -> None:
+    def test_config_from_env_prefers_data_dir_override_over_env(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_DATA_DIR": "cluster-data"}):
             config = Config.from_env(self.root, data_dir=self.root / "custom-data")
+        self.assertEqual(config.data_dir, (self.root / "custom-data").resolve())
+
+    def test_config_from_env_loads_data_dir_from_dotenv_when_no_override_is_passed(self) -> None:
+        (self.root / ".env").write_text("STEAM_API_KEY=test-key\nSTEAM_DATA_DIR=cluster-data\n", encoding="utf-8")
+        with patch.dict(os.environ, {}, clear=True):
+            config = Config.from_env(self.root)
         self.assertEqual(config.data_dir, (self.root / "cluster-data").resolve())
 
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:

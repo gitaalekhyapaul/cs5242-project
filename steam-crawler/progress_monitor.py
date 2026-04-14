@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 import csv
 import gzip
-import os
+import sys
 from collections import Counter
 from pathlib import Path
+
+from src.steam_crawler.config import load_project_env, resolve_data_dir as resolve_config_data_dir
+
+
+CSV_FIELD_SIZE_LIMIT_READY = False
 
 
 def resolve_root(root: Path) -> Path:
@@ -15,18 +20,8 @@ def resolve_root(root: Path) -> Path:
     return resolved
 
 
-def resolve_data_dir(root: Path, data_dir: Path | None) -> Path:
-    raw_value = os.getenv("STEAM_DATA_DIR")
-    resolved = Path(raw_value) if raw_value is not None else data_dir
-    if resolved is None:
-        return root / "data"
-    if not resolved.is_absolute():
-        resolved = root / resolved
-    return resolved.resolve()
-
-
 def build_stage_paths(root: Path, data_dir: Path | None = None) -> dict[str, Path]:
-    resolved_data_dir = resolve_data_dir(root, data_dir)
+    resolved_data_dir = resolve_config_data_dir(root, data_dir)
     log_dir = root / "logs"
     return {
         "stage_01": resolved_data_dir / "stage_01_apps_catalog.csv",
@@ -40,6 +35,20 @@ def build_stage_paths(root: Path, data_dir: Path | None = None) -> dict[str, Pat
     }
 
 
+def configure_csv_field_size_limit() -> None:
+    global CSV_FIELD_SIZE_LIMIT_READY
+    if CSV_FIELD_SIZE_LIMIT_READY:
+        return
+    limit = sys.maxsize
+    while True:
+        try:
+            csv.field_size_limit(limit)
+            CSV_FIELD_SIZE_LIMIT_READY = True
+            return
+        except OverflowError:
+            limit //= 10
+
+
 def open_text(path: Path):
     if path.suffix == ".gz":
         return gzip.open(path, "rt", encoding="utf-8", newline="")
@@ -47,6 +56,7 @@ def open_text(path: Path):
 
 
 def iter_csv_rows(path: Path):
+    configure_csv_field_size_limit()
     with open_text(path) as handle:
         yield from csv.DictReader(handle)
 
@@ -54,7 +64,11 @@ def iter_csv_rows(path: Path):
 def count_csv_rows(path: Path) -> int:
     if not path.exists():
         return 0
-    return sum(1 for _ in iter_csv_rows(path))
+    configure_csv_field_size_limit()
+    with open_text(path) as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return sum(1 for _ in reader)
 
 
 def tail_rows(path: Path, limit: int) -> list[dict[str, str]]:
@@ -241,7 +255,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--data-dir",
         default=None,
         type=Path,
-        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+        help="Optional override for stage output storage. Overrides STEAM_DATA_DIR from the environment or .env.",
     )
     parser.add_argument(
         "--appid",
@@ -268,6 +282,7 @@ def main() -> int:
     parser = build_argument_parser()
     args = parser.parse_args()
     root_dir = resolve_root(args.root)
+    load_project_env(root_dir)
     stage_paths = build_stage_paths(root_dir, args.data_dir)
     print_paths(root_dir, stage_paths)
     print_summary(stage_paths, top_n=args.top_n, error_tail=args.error_tail)

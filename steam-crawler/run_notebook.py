@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import requests
-from dotenv import load_dotenv
 
 try:
     import psutil
@@ -23,7 +22,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from steam_crawler import Config, Pipeline
-from steam_crawler.config import resolve_endpoint_mode
+from steam_crawler.config import load_project_env, resolve_endpoint_mode
 
 
 PREFLIGHT_TIMEOUT_SEC = 30
@@ -67,11 +66,6 @@ FULL_LIMITS = {
     "max_games": None,
 }
 SMOKE_LIMITS = {"max_pages": 1, "max_apps": 25, "sample_size": 5, "max_games": 2}
-
-
-def load_project_env(root_dir: Path) -> None:
-    load_dotenv(root_dir / ".env", override=False)
-
 
 def resolve_run_mode(cli_value: str | None) -> str:
     run_mode = (cli_value or os.getenv("STEAM_RUN_MODE", "smoke")).strip().lower()
@@ -205,19 +199,19 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--data-dir",
         default=None,
         type=Path,
-        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+        help="Optional override for stage output storage. Overrides STEAM_DATA_DIR from the environment or .env.",
     )
     parser.add_argument(
         "--run-mode",
         choices=["smoke", "full"],
         default=None,
-        help="Execution profile. Overrides STEAM_RUN_MODE from the environment or steam-crawler/.env.",
+        help="Execution profile. Overrides STEAM_RUN_MODE from the environment or .env.",
     )
     parser.add_argument(
         "--endpoint-mode",
         choices=["proxy", "direct"],
         default=None,
-        help="Endpoint mode. Ignored when STEAM_ENDPOINT_MODE is set in the environment or .env.",
+        help="Endpoint mode. Overrides STEAM_ENDPOINT_MODE from the environment or .env.",
     )
     parser.add_argument(
         "--stage",
@@ -259,7 +253,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--loop-limit",
         type=int,
         default=None,
-        help="Optional override for the repeated-cursor stop-gap in stage 5. Ignored when STEAM_CURSOR_LOOP_LIMIT is set.",
+        help="Optional override for the repeated-cursor stop-gap in stage 5. Overrides STEAM_CURSOR_LOOP_LIMIT from the environment or .env.",
     )
     parser.add_argument(
         "--force-refresh",

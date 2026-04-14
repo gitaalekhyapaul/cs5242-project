@@ -15,7 +15,7 @@ DIRECT_STORE_BASE_URL = "https://store.steampowered.com"
 
 
 def resolve_endpoint_mode(cli_value: str | None = None) -> str:
-    endpoint_mode = (os.getenv("STEAM_ENDPOINT_MODE") or cli_value or "proxy").strip().lower()
+    endpoint_mode = (cli_value or os.getenv("STEAM_ENDPOINT_MODE") or "proxy").strip().lower()
     if endpoint_mode not in ENDPOINT_MODES:
         raise ValueError(f"Invalid STEAM_ENDPOINT_MODE: {endpoint_mode!r}. Expected one of {sorted(ENDPOINT_MODES)}.")
     return endpoint_mode
@@ -23,7 +23,7 @@ def resolve_endpoint_mode(cli_value: str | None = None) -> str:
 
 def resolve_review_cursor_loop_limit(cli_value: int | None = None) -> int:
     raw_value = os.getenv("STEAM_CURSOR_LOOP_LIMIT")
-    resolved = raw_value if raw_value is not None else cli_value
+    resolved = cli_value if cli_value is not None else raw_value
     if resolved is None:
         return 10
     try:
@@ -41,13 +41,20 @@ def resolve_review_cursor_loop_limit(cli_value: int | None = None) -> int:
 
 def resolve_data_dir(root_dir: Path, cli_value: str | Path | None = None) -> Path:
     raw_value = os.getenv("STEAM_DATA_DIR")
-    resolved = raw_value if raw_value is not None else cli_value
+    resolved = cli_value if cli_value is not None else raw_value
     if resolved is None:
         return root_dir / "data"
     path = Path(resolved)
     if not path.is_absolute():
         path = root_dir / path
     return path.resolve()
+
+
+def load_project_env(root_dir: str | Path, dotenv_path: str | Path | None = None) -> Path:
+    resolved_root = Path(root_dir).resolve()
+    env_path = Path(dotenv_path).resolve() if dotenv_path is not None else resolved_root / ".env"
+    load_dotenv(env_path, override=False)
+    return env_path
 
 
 @dataclass(slots=True)
@@ -111,8 +118,7 @@ class Config:
         """Build config from a project root plus optional environment overrides."""
 
         resolved_root = Path(root_dir).resolve()
-        env_path = Path(dotenv_path).resolve() if dotenv_path is not None else resolved_root / ".env"
-        load_dotenv(env_path, override=False)
+        load_project_env(resolved_root, dotenv_path)
         api_key = steam_api_key or os.getenv("STEAM_API_KEY")
         if not api_key:
             raise ValueError("STEAM_API_KEY is required. Set it in the environment or in steam-crawler/.env.")

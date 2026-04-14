@@ -923,7 +923,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--data-dir",
         default=None,
         type=Path,
-        help="Optional override for stage output storage. Ignored when STEAM_DATA_DIR is set.",
+        help="Optional override for stage output storage. Overrides STEAM_DATA_DIR from the environment or .env.",
     )
     parser.add_argument(
         "--stage",
@@ -935,7 +935,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--endpoint-mode",
         choices=["proxy", "direct"],
         default=None,
-        help="Endpoint mode. Ignored when STEAM_ENDPOINT_MODE is set in the environment or .env.",
+        help="Endpoint mode. Overrides STEAM_ENDPOINT_MODE from the environment or .env.",
     )
     parser.add_argument("--max-pages", type=int, default=None, help="Optional smoke-test limit for stage 1 page count.")
     parser.add_argument(
@@ -956,7 +956,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--loop-limit",
         type=int,
         default=None,
-        help="Optional override for the repeated-cursor stop-gap in stage 5. Ignored when STEAM_CURSOR_LOOP_LIMIT is set.",
+        help="Optional override for the repeated-cursor stop-gap in stage 5. Overrides STEAM_CURSOR_LOOP_LIMIT from the environment or .env.",
     )
     parser.add_argument("--force-refresh", action="store_true", help="Ignore cached outputs for the selected stage.")
     return parser
