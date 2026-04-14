@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from steam_crawler.config import Config
+from steam_crawler.config import Config, load_project_env
 from steam_crawler.pipeline import Pipeline
 
 
@@ -193,6 +193,17 @@ class PipelineResumeTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             config = Config.from_env(self.root)
         self.assertEqual(config.data_dir, (self.root / "cluster-data").resolve())
+
+    def test_load_project_env_refreshes_existing_value_from_dotenv(self) -> None:
+        env_path = self.root / ".env"
+        with patch.dict(os.environ, {}, clear=True):
+            env_path.write_text("STEAM_DATA_DIR=first\n", encoding="utf-8")
+            load_project_env(self.root)
+            self.assertEqual(os.environ["STEAM_DATA_DIR"], "first")
+
+            env_path.write_text("STEAM_DATA_DIR=second\n", encoding="utf-8")
+            load_project_env(self.root)
+            self.assertEqual(os.environ["STEAM_DATA_DIR"], "second")
 
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []

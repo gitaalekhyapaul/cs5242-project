@@ -50,10 +50,15 @@ def resolve_data_dir(root_dir: Path, cli_value: str | Path | None = None) -> Pat
     return path.resolve()
 
 
-def load_project_env(root_dir: str | Path, dotenv_path: str | Path | None = None) -> Path:
+def load_project_env(
+    root_dir: str | Path,
+    dotenv_path: str | Path | None = None,
+    *,
+    override: bool = True,
+) -> Path:
     resolved_root = Path(root_dir).resolve()
     env_path = Path(dotenv_path).resolve() if dotenv_path is not None else resolved_root / ".env"
-    load_dotenv(env_path, override=False)
+    load_dotenv(env_path, override=override)
     return env_path
 
 
