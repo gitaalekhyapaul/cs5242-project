@@ -19,6 +19,7 @@ from steam_crawler.config import (
     resolve_max_pages,
     resolve_min_recommendations,
     resolve_rate_limit_gap_delay_sec,
+    resolve_reviews_per_game,
     resolve_sample_size,
 )
 import steam_crawler.pipeline as pipeline_module
@@ -272,6 +273,11 @@ class PipelineResumeTests(unittest.TestCase):
             config = Config.from_env(self.root, sample_size=4)
         self.assertEqual(config.sample_size, 4)
 
+    def test_config_from_env_prefers_reviews_per_game_override_over_env(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_REVIEWS_PER_GAME": "120"}):
+            config = Config.from_env(self.root, reviews_per_game=40)
+        self.assertEqual(config.reviews_per_game, 40)
+
     def test_config_from_env_prefers_min_recommendations_override_over_env(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_MIN_RECOMMENDATIONS": "12000"}):
             config = Config.from_env(self.root, min_recommendations=4000)
@@ -306,6 +312,7 @@ class PipelineResumeTests(unittest.TestCase):
                 "STEAM_MAX_PAGES": "10",
                 "STEAM_MAX_APPS": "20",
                 "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_REVIEWS_PER_GAME": "31",
                 "STEAM_MIN_RECOMMENDATIONS": "35",
                 "STEAM_MAX_GAMES": "40",
                 "STEAM_GAP_DELAY": "50.5",
@@ -315,6 +322,7 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_pages(1), 1)
             self.assertEqual(resolve_max_apps(2), 2)
             self.assertEqual(resolve_sample_size(3), 3)
+            self.assertEqual(resolve_reviews_per_game(4), 4)
             self.assertEqual(resolve_min_recommendations(4), 4)
             self.assertEqual(resolve_max_games(4), 4)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(5.5), 5.5)
@@ -326,6 +334,7 @@ class PipelineResumeTests(unittest.TestCase):
                 "STEAM_MAX_PAGES": "10",
                 "STEAM_MAX_APPS": "20",
                 "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_REVIEWS_PER_GAME": "31",
                 "STEAM_MIN_RECOMMENDATIONS": "35",
                 "STEAM_MAX_GAMES": "40",
                 "STEAM_GAP_DELAY": "50.5",
@@ -335,6 +344,7 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_pages(), 10)
             self.assertEqual(resolve_max_apps(), 20)
             self.assertEqual(resolve_sample_size(), 30)
+            self.assertEqual(resolve_reviews_per_game(), 31)
             self.assertEqual(resolve_min_recommendations(), 35)
             self.assertEqual(resolve_max_games(), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(), 50.5)
@@ -346,6 +356,7 @@ class PipelineResumeTests(unittest.TestCase):
                 "STEAM_MAX_PAGES": "10",
                 "STEAM_MAX_APPS": "20",
                 "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_REVIEWS_PER_GAME": "31",
                 "STEAM_MIN_RECOMMENDATIONS": "35",
                 "STEAM_MAX_GAMES": "40",
                 "STEAM_GAP_DELAY": "50.5",
@@ -355,6 +366,7 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_pages(default=1), 10)
             self.assertEqual(resolve_max_apps(default=2), 20)
             self.assertEqual(resolve_sample_size(default=3), 30)
+            self.assertEqual(resolve_reviews_per_game(default=4), 31)
             self.assertEqual(resolve_min_recommendations(default=4), 35)
             self.assertEqual(resolve_max_games(default=5), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(default=6.5), 50.5)

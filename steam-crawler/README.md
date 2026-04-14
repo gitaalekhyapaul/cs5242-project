@@ -198,6 +198,7 @@ Endpoint selection is also environment-driven:
 - `STEAM_CURSOR_LOOP_LIMIT=10`: default stop-gap for repeated no-yield review cursors in Stage 5
 - `STEAM_DATA_DIR=/path/to/stage-data`: optional override for stage CSV / gzip outputs; when relative, it is resolved under the crawler root
 - `STEAM_SAMPLE_SIZE=10000`: optional Stage 4 sample-size override
+- `STEAM_REVIEWS_PER_GAME=1000`: optional Stage 5 per-game review target override
 - `STEAM_MIN_RECOMMENDATIONS=5000`: optional Stage 3 eligibility threshold override
 - `STEAM_MAX_PAGES=1`: optional Stage 1 page cap
 - `STEAM_MAX_APPS=25`: optional Stage 2 and Stage 3 app cap
@@ -208,6 +209,7 @@ For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--en
 Both terminal entrypoints also accept `--max-pages <count>` to override `STEAM_MAX_PAGES` from the environment or `.env`.
 Both terminal entrypoints also accept `--max-apps <count>` to override `STEAM_MAX_APPS` from the environment or `.env`.
 Both terminal entrypoints also accept `--sample-size <count>` to override `STEAM_SAMPLE_SIZE` from the environment or `.env`.
+Both terminal entrypoints also accept `--reviews-per-game <count>` to override `STEAM_REVIEWS_PER_GAME` from the environment or `.env`.
 Both terminal entrypoints also accept `--min-recommendations <count>` to override `STEAM_MIN_RECOMMENDATIONS` from the environment or `.env`.
 Both terminal entrypoints also accept `--max-games <count>` to override `STEAM_MAX_GAMES` from the environment or `.env`.
 Both terminal entrypoints also accept `--gap-delay <seconds>` to override `STEAM_GAP_DELAY` from the environment or `.env`.

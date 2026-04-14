@@ -31,6 +31,7 @@ from steam_crawler.config import (
     resolve_min_recommendations,
     resolve_non_negative_int,
     resolve_rate_limit_gap_delay_sec,
+    resolve_reviews_per_game,
 )
 
 
@@ -253,6 +254,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Optional override for the Stage 3 eligibility recommendation threshold. Overrides STEAM_MIN_RECOMMENDATIONS from the environment or .env.",
     )
     parser.add_argument(
+        "--reviews-per-game",
+        type=int,
+        default=None,
+        help="Optional override for the Stage 5 per-game review target. Overrides STEAM_REVIEWS_PER_GAME from the environment or .env.",
+    )
+    parser.add_argument(
         "--max-games",
         type=int,
         default=None,
@@ -358,6 +365,7 @@ def main() -> int:
         label="STEAM_SAMPLE_SIZE",
     )
     min_recommendations = resolve_min_recommendations(args.min_recommendations)
+    reviews_per_game = resolve_reviews_per_game(args.reviews_per_game, default=active_config["reviews_per_game"])
     max_games = resolve_max_games(args.max_games)
     active_limits = apply_limit_overrides(
         active_limits,
@@ -374,6 +382,7 @@ def main() -> int:
     if sample_size is not None:
         active_config["sample_size"] = sample_size
     active_config["min_recommendations"] = min_recommendations
+    active_config["reviews_per_game"] = reviews_per_game
 
     settings = Config.from_env(root_dir, endpoint_mode=endpoint_mode, **active_config)
     pipeline = Pipeline(settings)

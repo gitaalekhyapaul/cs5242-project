@@ -97,6 +97,17 @@ def resolve_sample_size(cli_value: int | None = None, *, default: int = 10_000) 
     return sample_size
 
 
+def resolve_reviews_per_game(cli_value: int | None = None, *, default: int = 1_000) -> int:
+    reviews_per_game = resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_REVIEWS_PER_GAME",
+        default=default,
+        label="STEAM_REVIEWS_PER_GAME",
+    )
+    assert reviews_per_game is not None
+    return reviews_per_game
+
+
 def resolve_min_recommendations(cli_value: int | None = None, *, default: int = 5_000) -> int:
     min_recommendations = resolve_non_negative_int(
         cli_value,
@@ -241,6 +252,10 @@ class Config:
         )
         sample_size_override = overrides.get("sample_size")
         sample_size = resolve_sample_size(int(sample_size_override) if sample_size_override is not None else None)
+        reviews_per_game_override = overrides.get("reviews_per_game")
+        reviews_per_game = resolve_reviews_per_game(
+            int(reviews_per_game_override) if reviews_per_game_override is not None else None
+        )
         min_recommendations_override = overrides.get("min_recommendations")
         min_recommendations = resolve_min_recommendations(
             int(min_recommendations_override) if min_recommendations_override is not None else None
@@ -258,6 +273,7 @@ class Config:
             data_dir=data_dir,
             log_dir=resolved_root / "logs",
             sample_size=sample_size,
+            reviews_per_game=reviews_per_game,
             min_recommendations=min_recommendations,
             rate_limit_gap_delay_sec=rate_limit_gap_delay_sec,
             endpoint_mode=endpoint_mode,
@@ -268,6 +284,7 @@ class Config:
             merged_overrides["endpoint_mode"] = endpoint_mode
             merged_overrides["review_cursor_loop_limit"] = review_cursor_loop_limit
             merged_overrides["sample_size"] = sample_size
+            merged_overrides["reviews_per_game"] = reviews_per_game
             merged_overrides["min_recommendations"] = min_recommendations
             merged_overrides["rate_limit_gap_delay_sec"] = rate_limit_gap_delay_sec
             merged_overrides["data_dir"] = data_dir

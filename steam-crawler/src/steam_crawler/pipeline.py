@@ -21,6 +21,7 @@ from .config import (
     resolve_max_pages,
     resolve_min_recommendations,
     resolve_rate_limit_gap_delay_sec,
+    resolve_reviews_per_game,
 )
 from .http_client import HttpClient
 from .logging_utils import CsvErrorLogger, setup_logger
@@ -998,6 +999,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Optional Stage 3 eligibility recommendation threshold. Overrides STEAM_MIN_RECOMMENDATIONS from the environment or .env.",
     )
     parser.add_argument(
+        "--reviews-per-game",
+        type=int,
+        default=None,
+        help="Optional Stage 5 per-game review target. Overrides STEAM_REVIEWS_PER_GAME from the environment or .env.",
+    )
+    parser.add_argument(
         "--max-games",
         type=int,
         default=None,
@@ -1030,6 +1037,7 @@ def main() -> int:
     if args.data_dir is not None:
         config_overrides["data_dir"] = args.data_dir
     config_overrides["min_recommendations"] = resolve_min_recommendations(args.min_recommendations)
+    config_overrides["reviews_per_game"] = resolve_reviews_per_game(args.reviews_per_game)
     max_pages = resolve_max_pages(args.max_pages)
     max_apps = resolve_max_apps(args.max_apps)
     max_games = resolve_max_games(args.max_games)
