@@ -19,6 +19,7 @@ from .config import (
     resolve_max_apps,
     resolve_max_games,
     resolve_max_pages,
+    resolve_min_recommendations,
     resolve_rate_limit_gap_delay_sec,
 )
 from .http_client import HttpClient
@@ -991,6 +992,12 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Optional stage 4 sample-size override. Overrides STEAM_SAMPLE_SIZE from the environment or .env.",
     )
     parser.add_argument(
+        "--min-recommendations",
+        type=int,
+        default=None,
+        help="Optional Stage 3 eligibility recommendation threshold. Overrides STEAM_MIN_RECOMMENDATIONS from the environment or .env.",
+    )
+    parser.add_argument(
         "--max-games",
         type=int,
         default=None,
@@ -1022,6 +1029,7 @@ def main() -> int:
         config_overrides["review_cursor_loop_limit"] = args.loop_limit
     if args.data_dir is not None:
         config_overrides["data_dir"] = args.data_dir
+    config_overrides["min_recommendations"] = resolve_min_recommendations(args.min_recommendations)
     max_pages = resolve_max_pages(args.max_pages)
     max_apps = resolve_max_apps(args.max_apps)
     max_games = resolve_max_games(args.max_games)

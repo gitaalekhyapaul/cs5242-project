@@ -97,29 +97,40 @@ def resolve_sample_size(cli_value: int | None = None, *, default: int = 10_000) 
     return sample_size
 
 
-def resolve_max_pages(cli_value: int | None = None) -> int | None:
+def resolve_min_recommendations(cli_value: int | None = None, *, default: int = 5_000) -> int:
+    min_recommendations = resolve_non_negative_int(
+        cli_value,
+        env_names="STEAM_MIN_RECOMMENDATIONS",
+        default=default,
+        label="STEAM_MIN_RECOMMENDATIONS",
+    )
+    assert min_recommendations is not None
+    return min_recommendations
+
+
+def resolve_max_pages(cli_value: int | None = None, *, default: int | None = None) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_PAGES",
-        default=None,
+        default=default,
         label="STEAM_MAX_PAGES",
     )
 
 
-def resolve_max_apps(cli_value: int | None = None) -> int | None:
+def resolve_max_apps(cli_value: int | None = None, *, default: int | None = None) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_APPS",
-        default=None,
+        default=default,
         label="STEAM_MAX_APPS",
     )
 
 
-def resolve_max_games(cli_value: int | None = None) -> int | None:
+def resolve_max_games(cli_value: int | None = None, *, default: int | None = None) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_GAMES",
-        default=None,
+        default=default,
         label="STEAM_MAX_GAMES",
     )
 
@@ -230,6 +241,10 @@ class Config:
         )
         sample_size_override = overrides.get("sample_size")
         sample_size = resolve_sample_size(int(sample_size_override) if sample_size_override is not None else None)
+        min_recommendations_override = overrides.get("min_recommendations")
+        min_recommendations = resolve_min_recommendations(
+            int(min_recommendations_override) if min_recommendations_override is not None else None
+        )
         gap_delay_override = overrides.get("rate_limit_gap_delay_sec")
         rate_limit_gap_delay_sec = resolve_rate_limit_gap_delay_sec(
             float(gap_delay_override) if gap_delay_override is not None else None
@@ -243,6 +258,7 @@ class Config:
             data_dir=data_dir,
             log_dir=resolved_root / "logs",
             sample_size=sample_size,
+            min_recommendations=min_recommendations,
             rate_limit_gap_delay_sec=rate_limit_gap_delay_sec,
             endpoint_mode=endpoint_mode,
             review_cursor_loop_limit=review_cursor_loop_limit,
@@ -252,6 +268,7 @@ class Config:
             merged_overrides["endpoint_mode"] = endpoint_mode
             merged_overrides["review_cursor_loop_limit"] = review_cursor_loop_limit
             merged_overrides["sample_size"] = sample_size
+            merged_overrides["min_recommendations"] = min_recommendations
             merged_overrides["rate_limit_gap_delay_sec"] = rate_limit_gap_delay_sec
             merged_overrides["data_dir"] = data_dir
             settings = replace(settings, **merged_overrides)

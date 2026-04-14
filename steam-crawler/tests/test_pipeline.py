@@ -17,6 +17,7 @@ from steam_crawler.config import (
     resolve_max_apps,
     resolve_max_games,
     resolve_max_pages,
+    resolve_min_recommendations,
     resolve_rate_limit_gap_delay_sec,
     resolve_sample_size,
 )
@@ -271,6 +272,11 @@ class PipelineResumeTests(unittest.TestCase):
             config = Config.from_env(self.root, sample_size=4)
         self.assertEqual(config.sample_size, 4)
 
+    def test_config_from_env_prefers_min_recommendations_override_over_env(self) -> None:
+        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_MIN_RECOMMENDATIONS": "12000"}):
+            config = Config.from_env(self.root, min_recommendations=4000)
+        self.assertEqual(config.min_recommendations, 4000)
+
     def test_config_from_env_loads_gap_delay_from_env_when_no_override_is_passed(self) -> None:
         with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_GAP_DELAY": "12.5"}):
             config = Config.from_env(self.root)
@@ -300,6 +306,7 @@ class PipelineResumeTests(unittest.TestCase):
                 "STEAM_MAX_PAGES": "10",
                 "STEAM_MAX_APPS": "20",
                 "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_MIN_RECOMMENDATIONS": "35",
                 "STEAM_MAX_GAMES": "40",
                 "STEAM_GAP_DELAY": "50.5",
             },
@@ -308,6 +315,7 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_pages(1), 1)
             self.assertEqual(resolve_max_apps(2), 2)
             self.assertEqual(resolve_sample_size(3), 3)
+            self.assertEqual(resolve_min_recommendations(4), 4)
             self.assertEqual(resolve_max_games(4), 4)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(5.5), 5.5)
 
@@ -318,6 +326,7 @@ class PipelineResumeTests(unittest.TestCase):
                 "STEAM_MAX_PAGES": "10",
                 "STEAM_MAX_APPS": "20",
                 "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_MIN_RECOMMENDATIONS": "35",
                 "STEAM_MAX_GAMES": "40",
                 "STEAM_GAP_DELAY": "50.5",
             },
@@ -326,8 +335,29 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_pages(), 10)
             self.assertEqual(resolve_max_apps(), 20)
             self.assertEqual(resolve_sample_size(), 30)
+            self.assertEqual(resolve_min_recommendations(), 35)
             self.assertEqual(resolve_max_games(), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(), 50.5)
+
+    def test_stage_limit_and_sample_resolvers_prefer_env_over_profile_defaults(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "STEAM_MAX_PAGES": "10",
+                "STEAM_MAX_APPS": "20",
+                "STEAM_SAMPLE_SIZE": "30",
+                "STEAM_MIN_RECOMMENDATIONS": "35",
+                "STEAM_MAX_GAMES": "40",
+                "STEAM_GAP_DELAY": "50.5",
+            },
+            clear=True,
+        ):
+            self.assertEqual(resolve_max_pages(default=1), 10)
+            self.assertEqual(resolve_max_apps(default=2), 20)
+            self.assertEqual(resolve_sample_size(default=3), 30)
+            self.assertEqual(resolve_min_recommendations(default=4), 35)
+            self.assertEqual(resolve_max_games(default=5), 40)
+            self.assertEqual(resolve_rate_limit_gap_delay_sec(default=6.5), 50.5)
 
     def test_progress_bar_falls_back_when_notebook_widgets_are_unavailable(self) -> None:
         with patch.object(pipeline_module, "_is_notebook_runtime", return_value=True):
