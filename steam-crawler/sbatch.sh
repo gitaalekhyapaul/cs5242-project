@@ -34,7 +34,7 @@ echo "Current directory: $(pwd)"
     # --output steam_crawler.executed.ipynb
 
 # Run the crawler notebook headlessly
-python steam-crawler/run_notebook.py --run-mode full --stage all --data-dir /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/scratch/steam-crawler/data
+python steam-crawler/run_notebook.py --run-mode full --stage stage5 --data-dir /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/scratch/steam-crawler/data
 echo "Crawling complete. Monitoring progress..."
 python steam-crawler/progress_monitor.py --data-dir /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/scratch/steam-crawler/data
 echo "Progress monitoring complete."
