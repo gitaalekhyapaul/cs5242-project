@@ -12,6 +12,8 @@
   5. `stage_05_reviews_dataset.csv.gz`
 - Add an optional Stage 4a patch artifact for analysis only, built from the Stage 4 sample rather than the full Stage 3 population:
   `stage_04a_selected_games.csv` and `stage_04a_selected_games.parquet`
+- Add an optional Stage 5a analysis artifact derived from the Stage 5 review dataset:
+  `stage_05a_reviews_dataset.csv.gz` and `stage_05a_reviews_dataset.parquet`
 - Stage 4 will sample up to 10,000 games where `recommendations_total > 5000`, using a fixed seed for reproducibility.
 - Stage 5 will pull 1,000 reviews per selected game as `500 recent + 500 helpful`, deduplicated by `recommendationid`, with recent backfill if the unique target is still not reached.
 - Stage 4a will enrich the sampled Stage 4 games only by re-fetching `appdetails` for `price_overview` and one `appreviews` page for `query_summary`, so downstream analysis can recover `price` and `%positive_reviews` without rerunning the main crawl.
@@ -37,6 +39,8 @@
   `appid`, `recommendationid`, `author_steamid`, `timestamp_created`, `review_text`, `source_stream`, `raw_json`.
 - Stage 4a analysis schema:
   `id`, `num_reviews`, `%positive_reviews`, `price`, `app_category`.
+- Stage 5a analysis schema:
+  `timestamp`, `user_id`, `app_id`, `review_id`, `review_score`, `review_rating`.
 - Logs:
   `logs/run.log` for normal progress and `logs/errors.csv` for failures with `stage`, `appid`, `url`, `params_json`, `attempt`, `status_code`, `response_headers_json`, `response_body`, `exception_type`, `exception_message`, `retry_after_seconds`, `logged_at`.
 - EDA notebook env expectations:
@@ -57,6 +61,8 @@
   for each sampled game, first page `filter=recent` until the recent quota is reached or the stream exhausts; then page `filter=all&day_range=365` until the helpful quota is reached or the stream exhausts; if the total is still below 1,000 unique rows, continue paging the recent stream as backfill. Use `language=all`, `review_type=all`, `purchase_type=all`, `num_per_page=100`, and keep the default off-topic filtering against the configured reviews endpoint. In `proxy` mode this is `https://gpaul.cc/steamstore/appreviews/{appid}`; in `direct` mode this is `https://store.steampowered.com/appreviews/{appid}`. Track per-app progress in `stage_05_progress.csv` so interruption does not require rereading the full review dataset. Unexpected exceptions should still persist a terminal `failed` progress row before being re-raised. Stop a review stream after the configured repeated-cursor limit when those cursors yield no new unique review IDs so one app cannot spin forever on a cursor cycle.
 - Stage 4a:
   load `stage_04_selected_games.csv`, preserve Stage 4's sampled `appid`, `recommendations_total`, and `category_ids`, then fetch `appdetails` one app at a time using `filters=basic,price_overview` and fetch one reviews page per app with `num_per_page=1`. Convert `price_overview.final` from cents to currency units, fall back to `price_overview.initial` if `final` is absent, set free games to `0.0`, compute `%positive_reviews = total_positive / total_reviews * 100` from `query_summary`, and append rows incrementally to `stage_04a_selected_games.csv`. Missing values should be serialized as empty CSV cells rather than the literal string `<NA>`. Write the parquet copy only after the CSV patch step has finished.
+- Stage 5a:
+  load `stage_05_reviews_dataset.csv.gz` from the configured data directory and derive a narrow review dataset with one output row per Stage 5 review. Keep `timestamp` from `timestamp_created`, `user_id` from the nested review author steam id, `app_id` from the Stage 5 app id, `review_id` from `recommendationid`, `review_score` as `1` for `voted_up=true` and `0` for `voted_up=false`, and `review_rating` from `votes_up`. Write `stage_05a_reviews_dataset.csv.gz` first, then materialize `stage_05a_reviews_dataset.parquet` from that gzipped CSV in a later step.
 
 ## Notebook Behavior
 - `steam_crawler.ipynb` should have one runnable section per crawler stage plus one “run all missing stages” section. `run_notebook.py` should expose the same stage selection and smoke/full profile behavior for terminal execution.
@@ -65,6 +71,7 @@
 - After each stage, print a compact summary in the notebook: rows written, elapsed time, retry count, error count, and output path.
 - If a stage input CSV already exists, the notebook should announce that it is reusing the cached output and skip recomputation unless explicitly overridden.
 - The Stage 4a cells in `eda.ipynb` should run as two explicit steps: first the resumable CSV patch, then a later parquet materialization cell that reads the completed CSV.
+- The Stage 5a cells in `eda.ipynb` should run after the Stage 4a section and follow the same two-step pattern: first build the gzipped CSV, then materialize parquet from the completed Stage 5a CSV.
 
 ## Current Follow-up Gap
 - Stage 2 still logs and skips `appdetails` requests that exhaust retries instead of emitting an explicit failed metadata row or failing the stage. The remaining fix is to choose one of those behaviors so Stage 3 cannot silently treat fetch exhaustion as absent metadata.

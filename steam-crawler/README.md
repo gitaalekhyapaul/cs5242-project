@@ -35,7 +35,10 @@ One audit follow-up is still open: Stage 2 currently logs and skips `appdetails`
 
 This keeps the default development flow stable while still covering the live API path when you explicitly request it.
 
-For downstream analysis, the repo also includes an optional Stage 4a patch flow. It does not modify the main 5-stage crawler. Instead, it starts from the sampled Stage 4 games and re-fetches only the missing store metadata needed for `price` plus one review page per game to recover `query_summary` and derive `%positive_reviews`.
+For downstream analysis, the repo also includes two optional follow-up transforms that do not modify the main 5-stage crawler:
+
+- Stage 4a starts from the sampled Stage 4 games and re-fetches only the missing store metadata needed for `price` plus one review page per game to recover `query_summary` and derive `%positive_reviews`.
+- Stage 5a starts from the Stage 5 review dataset and derives a narrow review table for downstream modeling and analytics.
 
 ## Approach
 
@@ -50,6 +53,7 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 4. Stage 4 samples eligible games into `data/stage_04_selected_games.csv`.
 5. Stage 5 fetches reviews for the sampled games from the configured reviews base into `data/stage_05_reviews_dataset.csv.gz`.
 6. Optional Stage 4a patch enriches the sampled Stage 4 games into `data/stage_04a_selected_games.csv`, then materializes `data/stage_04a_selected_games.parquet` from the completed CSV.
+7. Optional Stage 5a transform derives `data/stage_05a_reviews_dataset.csv.gz`, then materializes `data/stage_05a_reviews_dataset.parquet` from that gzipped CSV.
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
 That means `price_overview` is not present in the cached Stage 2 and Stage 3 payloads. Stage 4a exists specifically to recover price and review-summary fields for the sampled games without rerunning the entire crawler.
@@ -95,6 +99,13 @@ The pipeline intentionally keeps a narrow flattened schema for downstream analys
   - `%positive_reviews`
   - `price`
   - `app_category`
+- Stage 5a fields:
+  - `timestamp`
+  - `user_id`
+  - `app_id`
+  - `review_id`
+  - `review_score`
+  - `review_rating`
 
 ### Why the code is class-based
 
@@ -117,6 +128,7 @@ The package is intentionally split by responsibility instead of putting all craw
 - [`logging_utils.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/logging_utils.py): run logger and structured CSV error logger
 - [`pipeline.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/pipeline.py): staged orchestration, checkpointing, progress bars, and CLI entrypoint
 - [`stage4a.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/stage4a.py): Stage 4a sample-only enrichment for price and review-summary patching
+- [`stage5a.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/stage5a.py): Stage 5a streaming transform from the Stage 5 review dataset into a narrow review table
 - [`run_notebook.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/run_notebook.py): notebook-equivalent terminal runner with the same smoke/full profiles and preflight checks
 - [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): submission notebook for smoke validation and full cluster execution
 - [`eda.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda.ipynb): generic EDA notebook for Stage 4 sample inspection and Stage 4a patch / parquet materialization
@@ -161,6 +173,7 @@ steam-crawler/
 │   ├── logging_utils.py
 │   ├── pipeline.py
 │   ├── stage4a.py
+│   ├── stage5a.py
 │   └── transforms.py
 └── tests/
     ├── test_http_client.py
@@ -295,6 +308,9 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 - env and dependency checks for notebook execution
 - a Stage 4a CSV patch cell
 - a separate Stage 4a parquet materialization cell
+- Stage 5 review dataset inspection from the configured data directory
+- a Stage 5a gzipped CSV transform cell
+- a separate Stage 5a parquet materialization cell
 
 Stage 4a is sample-only and resumable:
 
@@ -313,12 +329,23 @@ The Stage 4a CSV patch derives the final schema as follows:
 
 Missing Stage 4a values are written as empty CSV cells rather than the literal string `<NA>`.
 
+The Stage 5a transform derives the final schema as follows:
+
+- `timestamp`: from `raw_json.timestamp_created`
+- `user_id`: from `raw_json.author.steamid`
+- `app_id`: from the Stage 5 `appid`
+- `review_id`: from `recommendationid`, which is the unique Steam review id
+- `review_score`: `1` when `raw_json.voted_up` is true, otherwise `0` when false
+- `review_rating`: from `raw_json.votes_up`
+
 Run order in the notebook:
 
 1. Execute the Stage 4a CSV cell until `stage_04a_selected_games.csv` reaches the same row count as `stage_04_selected_games.csv`.
 2. Execute the next parquet cell to write `stage_04a_selected_games.parquet` from the completed CSV.
+3. Execute the Stage 5a CSV cell to derive `stage_05a_reviews_dataset.csv.gz` from `stage_05_reviews_dataset.csv.gz`.
+4. Execute the next Stage 5a parquet cell to write `stage_05a_reviews_dataset.parquet` from the completed Stage 5a gzipped CSV.
 
-Do not run the parquet cell while the CSV patch is still incomplete.
+Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
 ## How to test locally in small batches
 
