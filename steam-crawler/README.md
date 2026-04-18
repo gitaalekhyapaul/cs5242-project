@@ -5,9 +5,10 @@ This folder contains a stage-based Steam crawler designed for two modes of opera
 1. Small-batch smoke tests that validate the flow cheaply.
 2. Full dataset runs intended for long-running execution on a SLURM cluster.
 
-The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and two thin operator surfaces:
+The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and a small set of operator surfaces:
 
 - the submission notebook at `notebooks/steam_crawler.ipynb`
+- the analysis / patch notebook at `notebooks/eda.ipynb`
 - the notebook-equivalent runner at `run_notebook.py`
 
 ## Status Against PLAN.md
@@ -34,6 +35,8 @@ One audit follow-up is still open: Stage 2 currently logs and skips `appdetails`
 
 This keeps the default development flow stable while still covering the live API path when you explicitly request it.
 
+For downstream analysis, the repo also includes an optional Stage 4a patch flow. It does not modify the main 5-stage crawler. Instead, it starts from the sampled Stage 4 games and re-fetches only the missing store metadata needed for `price` plus one review page per game to recover `query_summary` and derive `%positive_reviews`.
+
 ## Approach
 
 The crawler is built around cacheable CSV stages so each expensive step can be resumed without recomputing earlier work.
@@ -46,8 +49,10 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 3. Stage 3 merges the catalog and metadata into `data/stage_03_apps_with_metadata.csv.gz`.
 4. Stage 4 samples eligible games into `data/stage_04_selected_games.csv`.
 5. Stage 5 fetches reviews for the sampled games from the configured reviews base into `data/stage_05_reviews_dataset.csv.gz`.
+6. Optional Stage 4a patch enriches the sampled Stage 4 games into `data/stage_04a_selected_games.csv`, then materializes `data/stage_04a_selected_games.parquet` from the completed CSV.
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
+That means `price_overview` is not present in the cached Stage 2 and Stage 3 payloads. Stage 4a exists specifically to recover price and review-summary fields for the sampled games without rerunning the entire crawler.
 
 ### Stage schemas
 
@@ -84,6 +89,12 @@ The pipeline intentionally keeps a narrow flattened schema for downstream analys
   - `review_text`
   - `source_stream`
   - `raw_json`
+- Stage 4a fields:
+  - `id`
+  - `num_reviews`
+  - `%positive_reviews`
+  - `price`
+  - `app_category`
 
 ### Why the code is class-based
 
@@ -105,8 +116,10 @@ The package is intentionally split by responsibility instead of putting all craw
 - [`transforms.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/transforms.py): CSV flatteners, JSON serialization, sampling, and merge helpers
 - [`logging_utils.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/logging_utils.py): run logger and structured CSV error logger
 - [`pipeline.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/pipeline.py): staged orchestration, checkpointing, progress bars, and CLI entrypoint
+- [`stage4a.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/stage4a.py): Stage 4a sample-only enrichment for price and review-summary patching
 - [`run_notebook.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/run_notebook.py): notebook-equivalent terminal runner with the same smoke/full profiles and preflight checks
 - [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): submission notebook for smoke validation and full cluster execution
+- [`eda.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda.ipynb): generic EDA notebook for Stage 3 inspection and Stage 4a patch / parquet materialization
 
 ### Retry and error handling
 
@@ -139,6 +152,7 @@ steam-crawler/
 ├── pyproject.toml
 ├── run_notebook.py
 ├── notebooks/
+│   ├── eda.ipynb
 │   └── steam_crawler.ipynb
 ├── src/steam_crawler/
 │   ├── __init__.py
@@ -146,6 +160,7 @@ steam-crawler/
 │   ├── http_client.py
 │   ├── logging_utils.py
 │   ├── pipeline.py
+│   ├── stage4a.py
 │   └── transforms.py
 └── tests/
     ├── test_http_client.py
@@ -204,6 +219,8 @@ Endpoint selection is also environment-driven:
 - `STEAM_MAX_APPS=25`: optional Stage 2 and Stage 3 app cap
 - `STEAM_MAX_GAMES=2`: optional Stage 5 game cap
 - `STEAM_GAP_DELAY=300`: optional `429` cooling-off gap in seconds
+- `KAGGLE_USERNAME`: required by `notebooks/eda.ipynb` when using Kaggle-backed notebook workflows
+- `KAGGLE_API_TOKEN`: required by `notebooks/eda.ipynb`; the notebook maps it to the Kaggle client's expected key env var internally
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. The CLI flag overrides `STEAM_ENDPOINT_MODE` from the environment or `.env`.
 Both terminal entrypoints also accept `--max-pages <count>` to override `STEAM_MAX_PAGES` from the environment or `.env`.
@@ -260,6 +277,48 @@ The runtime resolves endpoints from `endpoint_mode`:
   - app list: `https://api.steampowered.com/IStoreService/GetAppList/v1/`
   - app details: `https://store.steampowered.com/api/appdetails`
   - app reviews: `https://store.steampowered.com/appreviews/{appid}`
+
+The EDA notebook uses the same env-loading flow as the crawler notebook:
+
+- resolve `ROOT_DIR`
+- install from `requirements.txt` into the active kernel
+- call `load_project_env(ROOT_DIR, override=True)`
+- resolve the data directory through `STEAM_DATA_DIR`
+
+This keeps exploratory work and patch jobs pointed at the same staged data location as the main crawler.
+
+## EDA notebook and Stage 4a patch
+
+`notebooks/eda.ipynb` is intentionally generic so later EDA and ETL work can live in one place. The current sections cover:
+
+- Stage 3 archive inspection from the configured data directory
+- env and dependency checks for notebook execution
+- a Stage 4a CSV patch cell
+- a separate Stage 4a parquet materialization cell
+
+Stage 4a is sample-only and resumable:
+
+- source input: `data/stage_04_selected_games.csv`
+- output CSV: `data/stage_04a_selected_games.csv`
+- output parquet: `data/stage_04a_selected_games.parquet`
+- log file: `logs/errors_stage_04a.csv`
+
+The Stage 4a CSV patch derives the final schema as follows:
+
+- `id`: from Stage 4 `appid`
+- `num_reviews`: from Stage 4 `recommendations_total`
+- `%positive_reviews`: from `appreviews.query_summary.total_positive / total_reviews * 100`
+- `price`: from `appdetails.data.price_overview.final / 100`, falling back to `price_overview.initial / 100` if `final` is absent, with free games forced to `0.0`
+- `app_category`: from Stage 4 `category_ids`
+
+Missing Stage 4a values are written as empty CSV cells rather than the literal string `<NA>`.
+
+Run order in the notebook:
+
+1. Execute the Stage 4a CSV cell until `stage_04a_selected_games.csv` reaches the same row count as `stage_04_selected_games.csv`.
+2. Execute the next parquet cell to write `stage_04a_selected_games.parquet` from the completed CSV.
+
+Do not run the parquet cell while the CSV patch is still incomplete.
 
 ## How to test locally in small batches
 
