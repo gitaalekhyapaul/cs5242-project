@@ -16,7 +16,14 @@ from steam_crawler.transforms import (
 
 class TransformTests(unittest.TestCase):
     def test_flatten_app_catalog_row(self) -> None:
-        row = flatten_app_catalog_row({"appid": 10, "name": "Counter-Strike", "last_modified": 1, "price_change_number": 2})
+        row = flatten_app_catalog_row(
+            {
+                "appid": 10,
+                "name": "Counter-Strike",
+                "last_modified": 1,
+                "price_change_number": 2,
+            }
+        )
         self.assertEqual(row["appid"], 10)
         self.assertEqual(row["name"], "Counter-Strike")
         self.assertIn('"appid":10', row["raw_json"])

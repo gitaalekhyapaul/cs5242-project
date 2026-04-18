@@ -10,7 +10,6 @@ from .config import Config, load_project_env
 from .http_client import HttpClient
 from .logging_utils import CsvErrorLogger, setup_logger
 
-
 STAGE_04A_FIELDS = ["id", "num_reviews", "%positive_reviews", "price", "app_category"]
 
 
@@ -27,11 +26,15 @@ def _stage_04a_parquet_path(data_dir: Path) -> Path:
 
 
 def _load_stage_04_df(path: Path) -> pd.DataFrame:
-    stage_04_df = pd.read_csv(path, usecols=["appid", "recommendations_total", "category_ids"])
+    stage_04_df = pd.read_csv(
+        path, usecols=["appid", "recommendations_total", "category_ids"]
+    )
     return pd.DataFrame(
         {
             "id": pd.to_numeric(stage_04_df["appid"], errors="coerce").astype("Int64"),
-            "num_reviews": pd.to_numeric(stage_04_df["recommendations_total"], errors="coerce").astype("Int64"),
+            "num_reviews": pd.to_numeric(
+                stage_04_df["recommendations_total"], errors="coerce"
+            ).astype("Int64"),
             "app_category": stage_04_df["category_ids"].astype("string"),
         }
     )
@@ -43,12 +46,18 @@ def _load_stage_04a_df(path: Path) -> pd.DataFrame:
     stage_04a_df = pd.read_csv(path)
     if stage_04a_df.empty:
         return pd.DataFrame(columns=STAGE_04A_FIELDS)
-    stage_04a_df["id"] = pd.to_numeric(stage_04a_df["id"], errors="coerce").astype("Int64")
-    stage_04a_df["num_reviews"] = pd.to_numeric(stage_04a_df["num_reviews"], errors="coerce").astype("Int64")
+    stage_04a_df["id"] = pd.to_numeric(stage_04a_df["id"], errors="coerce").astype(
+        "Int64"
+    )
+    stage_04a_df["num_reviews"] = pd.to_numeric(
+        stage_04a_df["num_reviews"], errors="coerce"
+    ).astype("Int64")
     stage_04a_df["%positive_reviews"] = pd.to_numeric(
         stage_04a_df["%positive_reviews"], errors="coerce"
     ).astype("Float64")
-    stage_04a_df["price"] = pd.to_numeric(stage_04a_df["price"], errors="coerce").astype("Float64")
+    stage_04a_df["price"] = pd.to_numeric(
+        stage_04a_df["price"], errors="coerce"
+    ).astype("Float64")
     stage_04a_df["app_category"] = stage_04a_df["app_category"].astype("string")
     return stage_04a_df[STAGE_04A_FIELDS]
 
@@ -74,8 +83,12 @@ def _write_stage_04a_parquet(csv_path: Path, parquet_path: Path) -> pd.DataFrame
     return stage_04a_df
 
 
-def _extract_price(detail_payload: dict[str, object], appid: int) -> float | pd._libs.missing.NAType:
-    keyed_payload = detail_payload.get(str(appid), {}) if isinstance(detail_payload, dict) else {}
+def _extract_price(
+    detail_payload: dict[str, object], appid: int
+) -> float | pd._libs.missing.NAType:
+    keyed_payload = (
+        detail_payload.get(str(appid), {}) if isinstance(detail_payload, dict) else {}
+    )
     data = keyed_payload.get("data", {}) if isinstance(keyed_payload, dict) else {}
     if not isinstance(data, dict):
         return pd.NA
@@ -102,12 +115,20 @@ def _rewrite_stage_04a_csv(path: Path, stage_04a_df: pd.DataFrame) -> None:
             serialized_row: dict[str, object] = {}
             for field in STAGE_04A_FIELDS:
                 value = row.get(field, "")
-                serialized_row[field] = "" if value is pd.NA or pd.isna(value) else value
+                serialized_row[field] = (
+                    "" if value is pd.NA or pd.isna(value) else value
+                )
             writer.writerow(serialized_row)
 
 
-def _extract_positive_review_pct(review_payload: dict[str, object]) -> float | pd._libs.missing.NAType:
-    query_summary = review_payload.get("query_summary", {}) if isinstance(review_payload, dict) else {}
+def _extract_positive_review_pct(
+    review_payload: dict[str, object],
+) -> float | pd._libs.missing.NAType:
+    query_summary = (
+        review_payload.get("query_summary", {})
+        if isinstance(review_payload, dict)
+        else {}
+    )
     if not isinstance(query_summary, dict):
         return pd.NA
     total_reviews = query_summary.get("total_reviews")
@@ -155,7 +176,11 @@ def build_stage_04a(
     existing_df = _load_stage_04a_df(stage_04a_csv_path)
     if stage_04a_csv_path.exists() and not existing_df.empty:
         _rewrite_stage_04a_csv(stage_04a_csv_path, existing_df)
-    completed_ids = set(existing_df["id"].dropna().astype(int).tolist()) if not existing_df.empty else set()
+    completed_ids = (
+        set(existing_df["id"].dropna().astype(int).tolist())
+        if not existing_df.empty
+        else set()
+    )
 
     pending_df = stage_04_df[~stage_04_df["id"].isin(completed_ids)]
     progress = tqdm(
@@ -195,7 +220,9 @@ def build_stage_04a(
                     },
                 )
             except RuntimeError as exc:
-                logger.error("Skipping stage_04a patch for %s after retries: %s", appid, exc)
+                logger.error(
+                    "Skipping stage_04a patch for %s after retries: %s", appid, exc
+                )
                 progress.update(1)
                 continue
 

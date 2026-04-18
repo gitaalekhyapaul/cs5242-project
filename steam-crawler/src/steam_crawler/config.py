@@ -6,7 +6,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 ENDPOINT_MODES = {"proxy", "direct"}
 PROXY_API_BASE_URL = "https://gpaul.cc/steamapi"
 PROXY_STORE_BASE_URL = "https://gpaul.cc/steamstore"
@@ -37,9 +36,13 @@ def resolve_non_negative_int(
     try:
         value = int(resolved)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid {label}: {resolved!r}. Expected a non-negative integer.") from exc
+        raise ValueError(
+            f"Invalid {label}: {resolved!r}. Expected a non-negative integer."
+        ) from exc
     if value < 0:
-        raise ValueError(f"Invalid {label}: {value!r}. Expected a non-negative integer.")
+        raise ValueError(
+            f"Invalid {label}: {value!r}. Expected a non-negative integer."
+        )
     return value
 
 
@@ -58,16 +61,22 @@ def resolve_non_negative_float(
     try:
         value = float(resolved)
     except (TypeError, ValueError) as exc:
-        raise ValueError(f"Invalid {label}: {resolved!r}. Expected a non-negative number.") from exc
+        raise ValueError(
+            f"Invalid {label}: {resolved!r}. Expected a non-negative number."
+        ) from exc
     if value < 0:
         raise ValueError(f"Invalid {label}: {value!r}. Expected a non-negative number.")
     return value
 
 
 def resolve_endpoint_mode(cli_value: str | None = None) -> str:
-    endpoint_mode = (cli_value or os.getenv("STEAM_ENDPOINT_MODE") or "proxy").strip().lower()
+    endpoint_mode = (
+        (cli_value or os.getenv("STEAM_ENDPOINT_MODE") or "proxy").strip().lower()
+    )
     if endpoint_mode not in ENDPOINT_MODES:
-        raise ValueError(f"Invalid STEAM_ENDPOINT_MODE: {endpoint_mode!r}. Expected one of {sorted(ENDPOINT_MODES)}.")
+        raise ValueError(
+            f"Invalid STEAM_ENDPOINT_MODE: {endpoint_mode!r}. Expected one of {sorted(ENDPOINT_MODES)}."
+        )
     return endpoint_mode
 
 
@@ -97,7 +106,9 @@ def resolve_sample_size(cli_value: int | None = None, *, default: int = 10_000) 
     return sample_size
 
 
-def resolve_reviews_per_game(cli_value: int | None = None, *, default: int = 1_000) -> int:
+def resolve_reviews_per_game(
+    cli_value: int | None = None, *, default: int = 1_000
+) -> int:
     reviews_per_game = resolve_non_negative_int(
         cli_value,
         env_names="STEAM_REVIEWS_PER_GAME",
@@ -108,7 +119,9 @@ def resolve_reviews_per_game(cli_value: int | None = None, *, default: int = 1_0
     return reviews_per_game
 
 
-def resolve_min_recommendations(cli_value: int | None = None, *, default: int = 5_000) -> int:
+def resolve_min_recommendations(
+    cli_value: int | None = None, *, default: int = 5_000
+) -> int:
     min_recommendations = resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MIN_RECOMMENDATIONS",
@@ -119,7 +132,9 @@ def resolve_min_recommendations(cli_value: int | None = None, *, default: int = 
     return min_recommendations
 
 
-def resolve_max_pages(cli_value: int | None = None, *, default: int | None = None) -> int | None:
+def resolve_max_pages(
+    cli_value: int | None = None, *, default: int | None = None
+) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_PAGES",
@@ -128,7 +143,9 @@ def resolve_max_pages(cli_value: int | None = None, *, default: int | None = Non
     )
 
 
-def resolve_max_apps(cli_value: int | None = None, *, default: int | None = None) -> int | None:
+def resolve_max_apps(
+    cli_value: int | None = None, *, default: int | None = None
+) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_APPS",
@@ -137,7 +154,9 @@ def resolve_max_apps(cli_value: int | None = None, *, default: int | None = None
     )
 
 
-def resolve_max_games(cli_value: int | None = None, *, default: int | None = None) -> int | None:
+def resolve_max_games(
+    cli_value: int | None = None, *, default: int | None = None
+) -> int | None:
     return resolve_non_negative_int(
         cli_value,
         env_names="STEAM_MAX_GAMES",
@@ -146,7 +165,9 @@ def resolve_max_games(cli_value: int | None = None, *, default: int | None = Non
     )
 
 
-def resolve_rate_limit_gap_delay_sec(cli_value: float | None = None, *, default: float = 300.0) -> float:
+def resolve_rate_limit_gap_delay_sec(
+    cli_value: float | None = None, *, default: float = 300.0
+) -> float:
     gap_delay = resolve_non_negative_float(
         cli_value,
         env_names=("STEAM_GAP_DELAY", "STEAM_RATE_LIMIT_GAP_DELAY_SEC"),
@@ -175,7 +196,11 @@ def load_project_env(
     override: bool = True,
 ) -> Path:
     resolved_root = Path(root_dir).resolve()
-    env_path = Path(dotenv_path).resolve() if dotenv_path is not None else resolved_root / ".env"
+    env_path = (
+        Path(dotenv_path).resolve()
+        if dotenv_path is not None
+        else resolved_root / ".env"
+    )
     load_dotenv(env_path, override=override)
     return env_path
 
@@ -212,11 +237,19 @@ class Config:
 
     @property
     def api_base_url(self) -> str:
-        return DIRECT_API_BASE_URL if self.endpoint_mode == "direct" else PROXY_API_BASE_URL
+        return (
+            DIRECT_API_BASE_URL
+            if self.endpoint_mode == "direct"
+            else PROXY_API_BASE_URL
+        )
 
     @property
     def store_base_url(self) -> str:
-        return DIRECT_STORE_BASE_URL if self.endpoint_mode == "direct" else PROXY_STORE_BASE_URL
+        return (
+            DIRECT_STORE_BASE_URL
+            if self.endpoint_mode == "direct"
+            else PROXY_STORE_BASE_URL
+        )
 
     @property
     def app_list_url(self) -> str:
@@ -244,21 +277,33 @@ class Config:
         load_project_env(resolved_root, dotenv_path)
         api_key = steam_api_key or os.getenv("STEAM_API_KEY")
         if not api_key:
-            raise ValueError("STEAM_API_KEY is required. Set it in the environment or in steam-crawler/.env.")
-        endpoint_mode = resolve_endpoint_mode(str(overrides.get("endpoint_mode")) if "endpoint_mode" in overrides else None)
+            raise ValueError(
+                "STEAM_API_KEY is required. Set it in the environment or in steam-crawler/.env."
+            )
+        endpoint_mode = resolve_endpoint_mode(
+            str(overrides.get("endpoint_mode"))
+            if "endpoint_mode" in overrides
+            else None
+        )
         loop_limit_override = overrides.get("review_cursor_loop_limit")
         review_cursor_loop_limit = resolve_review_cursor_loop_limit(
             int(loop_limit_override) if loop_limit_override is not None else None
         )
         sample_size_override = overrides.get("sample_size")
-        sample_size = resolve_sample_size(int(sample_size_override) if sample_size_override is not None else None)
+        sample_size = resolve_sample_size(
+            int(sample_size_override) if sample_size_override is not None else None
+        )
         reviews_per_game_override = overrides.get("reviews_per_game")
         reviews_per_game = resolve_reviews_per_game(
-            int(reviews_per_game_override) if reviews_per_game_override is not None else None
+            int(reviews_per_game_override)
+            if reviews_per_game_override is not None
+            else None
         )
         min_recommendations_override = overrides.get("min_recommendations")
         min_recommendations = resolve_min_recommendations(
-            int(min_recommendations_override) if min_recommendations_override is not None else None
+            int(min_recommendations_override)
+            if min_recommendations_override is not None
+            else None
         )
         gap_delay_override = overrides.get("rate_limit_gap_delay_sec")
         rate_limit_gap_delay_sec = resolve_rate_limit_gap_delay_sec(

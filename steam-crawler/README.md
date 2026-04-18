@@ -119,7 +119,7 @@ The package is intentionally split by responsibility instead of putting all craw
 - [`stage4a.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/stage4a.py): Stage 4a sample-only enrichment for price and review-summary patching
 - [`run_notebook.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/run_notebook.py): notebook-equivalent terminal runner with the same smoke/full profiles and preflight checks
 - [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): submission notebook for smoke validation and full cluster execution
-- [`eda.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda.ipynb): generic EDA notebook for Stage 3 inspection and Stage 4a patch / parquet materialization
+- [`eda.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda.ipynb): generic EDA notebook for Stage 4 sample inspection and Stage 4a patch / parquet materialization
 
 ### Retry and error handling
 
@@ -291,7 +291,7 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 
 `notebooks/eda.ipynb` is intentionally generic so later EDA and ETL work can live in one place. The current sections cover:
 
-- Stage 3 archive inspection from the configured data directory
+- Stage 4 sample inspection from the configured data directory
 - env and dependency checks for notebook execution
 - a Stage 4a CSV patch cell
 - a separate Stage 4a parquet materialization cell

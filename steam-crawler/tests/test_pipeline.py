@@ -25,7 +25,6 @@ from steam_crawler.config import (
 import steam_crawler.pipeline as pipeline_module
 from steam_crawler.pipeline import Pipeline
 
-
 CSV_FIELD_SIZE_LIMIT_READY = False
 
 
@@ -67,7 +66,14 @@ class FakeHttpClient:
         self.retry_count = 0
         self.error_count = 0
 
-    def get_json(self, url: str, *, stage: str, appid: int | None = None, params: dict[str, object] | None = None):
+    def get_json(
+        self,
+        url: str,
+        *,
+        stage: str,
+        appid: int | None = None,
+        params: dict[str, object] | None = None,
+    ):
         return self.handler(url=url, stage=stage, appid=appid, params=params or {})
 
 
@@ -103,13 +109,33 @@ class PipelineResumeTests(unittest.TestCase):
             self.root / "data" / "stage_01_apps_catalog.csv",
             ["appid", "name", "last_modified", "price_change_number", "raw_json"],
             [
-                {"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
-                {"appid": 2, "name": "Two", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
-                {"appid": 3, "name": "Three", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {
+                    "appid": 1,
+                    "name": "One",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
+                {
+                    "appid": 2,
+                    "name": "Two",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
+                {
+                    "appid": 3,
+                    "name": "Three",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
             ],
         )
 
-        def crashing_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def crashing_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_02":
                 raise AssertionError(stage)
             if appid == 3:
@@ -117,26 +143,40 @@ class PipelineResumeTests(unittest.TestCase):
             return {
                 str(appid): {
                     "success": True,
-                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                    "data": {
+                        "type": "game",
+                        "categories": [],
+                        "recommendations": {"total": 10_000},
+                    },
                 }
             }
 
-        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(crashing_handler))
+        pipeline = Pipeline(
+            self.build_config(), http_client=FakeHttpClient(crashing_handler)
+        )
         with self.assertRaises(ValueError):
             pipeline.run_stage_02()
 
         partial_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
         self.assertEqual([row["appid"] for row in partial_rows], ["1", "2"])
 
-        def recovery_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def recovery_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             return {
                 str(appid): {
                     "success": True,
-                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                    "data": {
+                        "type": "game",
+                        "categories": [],
+                        "recommendations": {"total": 10_000},
+                    },
                 }
             }
 
-        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(recovery_handler))
+        pipeline = Pipeline(
+            self.build_config(), http_client=FakeHttpClient(recovery_handler)
+        )
         pipeline.run_stage_02()
         resumed_rows = read_csv(self.root / "data" / "stage_02_app_details.csv.gz")
         self.assertEqual([row["appid"] for row in resumed_rows], ["1", "2", "3"])
@@ -146,9 +186,27 @@ class PipelineResumeTests(unittest.TestCase):
             self.root / "data" / "stage_01_apps_catalog.csv",
             ["appid", "name", "last_modified", "price_change_number", "raw_json"],
             [
-                {"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
-                {"appid": 2, "name": "Two", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
-                {"appid": 3, "name": "Three", "last_modified": "", "price_change_number": "", "raw_json": "{}"},
+                {
+                    "appid": 1,
+                    "name": "One",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
+                {
+                    "appid": 2,
+                    "name": "Two",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
+                {
+                    "appid": 3,
+                    "name": "Three",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                },
             ],
         )
         stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
@@ -181,7 +239,9 @@ class PipelineResumeTests(unittest.TestCase):
 
         seen_appids: list[int] = []
 
-        def handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_02":
                 raise AssertionError(stage)
             assert appid is not None
@@ -189,7 +249,11 @@ class PipelineResumeTests(unittest.TestCase):
             return {
                 str(appid): {
                     "success": True,
-                    "data": {"type": "game", "categories": [], "recommendations": {"total": 10_000}},
+                    "data": {
+                        "type": "game",
+                        "categories": [],
+                        "recommendations": {"total": 10_000},
+                    },
                 }
             }
 
@@ -204,7 +268,15 @@ class PipelineResumeTests(unittest.TestCase):
         write_csv(
             self.root / "data" / "stage_01_apps_catalog.csv",
             ["appid", "name", "last_modified", "price_change_number", "raw_json"],
-            [{"appid": 1, "name": "One", "last_modified": "", "price_change_number": "", "raw_json": "{}"}],
+            [
+                {
+                    "appid": 1,
+                    "name": "One",
+                    "last_modified": "",
+                    "price_change_number": "",
+                    "raw_json": "{}",
+                }
+            ],
         )
         stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
         stage_02_path.parent.mkdir(parents=True, exist_ok=True)
@@ -235,11 +307,15 @@ class PipelineResumeTests(unittest.TestCase):
                 }
             )
 
-        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(lambda **_: {}))
+        pipeline = Pipeline(
+            self.build_config(), http_client=FakeHttpClient(lambda **_: {})
+        )
 
         stage_03_result = pipeline.run_stage_03()
         self.assertEqual(stage_03_result.rows_written, 1)
-        stage_03_rows = read_csv(self.root / "data" / "stage_03_apps_with_metadata.csv.gz")
+        stage_03_rows = read_csv(
+            self.root / "data" / "stage_03_apps_with_metadata.csv.gz"
+        )
         self.assertEqual(stage_03_rows[0]["eligible_for_sampling"], "True")
         self.assertEqual(stage_03_rows[0]["raw_details_json"], large_payload)
 
@@ -252,44 +328,72 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(stage_05_result.rows_written, 0)
 
     def test_config_from_env_prefers_endpoint_mode_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}):
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_ENDPOINT_MODE": "direct"}
+        ):
             config = Config.from_env(self.root, endpoint_mode="proxy")
         self.assertEqual(config.endpoint_mode, "proxy")
-        self.assertEqual(config.app_list_url, "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/")
-        self.assertEqual(config.app_details_url, "https://gpaul.cc/steamstore/api/appdetails")
+        self.assertEqual(
+            config.app_list_url,
+            "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/",
+        )
+        self.assertEqual(
+            config.app_details_url, "https://gpaul.cc/steamstore/api/appdetails"
+        )
 
     def test_config_from_env_prefers_cursor_loop_limit_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_CURSOR_LOOP_LIMIT": "12"}):
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_CURSOR_LOOP_LIMIT": "12"}
+        ):
             config = Config.from_env(self.root, review_cursor_loop_limit=4)
         self.assertEqual(config.review_cursor_loop_limit, 4)
 
     def test_config_from_env_prefers_data_dir_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_DATA_DIR": "cluster-data"}):
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_DATA_DIR": "cluster-data"}
+        ):
             config = Config.from_env(self.root, data_dir=self.root / "custom-data")
         self.assertEqual(config.data_dir, (self.root / "custom-data").resolve())
 
     def test_config_from_env_prefers_sample_size_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_SAMPLE_SIZE": "12"}):
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_SAMPLE_SIZE": "12"}
+        ):
             config = Config.from_env(self.root, sample_size=4)
         self.assertEqual(config.sample_size, 4)
 
     def test_config_from_env_prefers_reviews_per_game_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_REVIEWS_PER_GAME": "120"}):
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_REVIEWS_PER_GAME": "120"}
+        ):
             config = Config.from_env(self.root, reviews_per_game=40)
         self.assertEqual(config.reviews_per_game, 40)
 
-    def test_config_from_env_prefers_min_recommendations_override_over_env(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_MIN_RECOMMENDATIONS": "12000"}):
+    def test_config_from_env_prefers_min_recommendations_override_over_env(
+        self,
+    ) -> None:
+        with patch.dict(
+            os.environ,
+            {"STEAM_API_KEY": "test-key", "STEAM_MIN_RECOMMENDATIONS": "12000"},
+        ):
             config = Config.from_env(self.root, min_recommendations=4000)
         self.assertEqual(config.min_recommendations, 4000)
 
-    def test_config_from_env_loads_gap_delay_from_env_when_no_override_is_passed(self) -> None:
-        with patch.dict(os.environ, {"STEAM_API_KEY": "test-key", "STEAM_GAP_DELAY": "12.5"}):
+    def test_config_from_env_loads_gap_delay_from_env_when_no_override_is_passed(
+        self,
+    ) -> None:
+        with patch.dict(
+            os.environ, {"STEAM_API_KEY": "test-key", "STEAM_GAP_DELAY": "12.5"}
+        ):
             config = Config.from_env(self.root)
         self.assertEqual(config.rate_limit_gap_delay_sec, 12.5)
 
-    def test_config_from_env_loads_data_dir_from_dotenv_when_no_override_is_passed(self) -> None:
-        (self.root / ".env").write_text("STEAM_API_KEY=test-key\nSTEAM_DATA_DIR=cluster-data\n", encoding="utf-8")
+    def test_config_from_env_loads_data_dir_from_dotenv_when_no_override_is_passed(
+        self,
+    ) -> None:
+        (self.root / ".env").write_text(
+            "STEAM_API_KEY=test-key\nSTEAM_DATA_DIR=cluster-data\n", encoding="utf-8"
+        )
         with patch.dict(os.environ, {}, clear=True):
             config = Config.from_env(self.root)
         self.assertEqual(config.data_dir, (self.root / "cluster-data").resolve())
@@ -327,7 +431,9 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_games(4), 4)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(5.5), 5.5)
 
-    def test_stage_limit_and_sample_resolvers_use_env_when_no_override_is_passed(self) -> None:
+    def test_stage_limit_and_sample_resolvers_use_env_when_no_override_is_passed(
+        self,
+    ) -> None:
         with patch.dict(
             os.environ,
             {
@@ -349,7 +455,9 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_games(), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(), 50.5)
 
-    def test_stage_limit_and_sample_resolvers_prefer_env_over_profile_defaults(self) -> None:
+    def test_stage_limit_and_sample_resolvers_prefer_env_over_profile_defaults(
+        self,
+    ) -> None:
         with patch.dict(
             os.environ,
             {
@@ -371,10 +479,16 @@ class PipelineResumeTests(unittest.TestCase):
             self.assertEqual(resolve_max_games(default=5), 40)
             self.assertEqual(resolve_rate_limit_gap_delay_sec(default=6.5), 50.5)
 
-    def test_progress_bar_falls_back_when_notebook_widgets_are_unavailable(self) -> None:
+    def test_progress_bar_falls_back_when_notebook_widgets_are_unavailable(
+        self,
+    ) -> None:
         with patch.object(pipeline_module, "_is_notebook_runtime", return_value=True):
-            with patch("tqdm.notebook.tqdm", side_effect=ImportError("IProgress not found")):
-                progress = pipeline_module._progress_bar(total=1, desc="test", unit="items")
+            with patch(
+                "tqdm.notebook.tqdm", side_effect=ImportError("IProgress not found")
+            ):
+                progress = pipeline_module._progress_bar(
+                    total=1, desc="test", unit="items"
+                )
                 try:
                     self.assertNotEqual(type(progress).__module__, "tqdm.notebook")
                 finally:
@@ -383,7 +497,9 @@ class PipelineResumeTests(unittest.TestCase):
     def test_stage_01_uses_direct_endpoint_mode_urls(self) -> None:
         seen_urls: list[str] = []
 
-        def stage_01_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def stage_01_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             seen_urls.append(url)
             return {
                 "response": {
@@ -397,11 +513,20 @@ class PipelineResumeTests(unittest.TestCase):
             http_client=FakeHttpClient(stage_01_handler),
         )
         pipeline.run_stage_01(force_refresh=True, max_pages=1)
-        self.assertEqual(seen_urls, ["https://api.steampowered.com/IStoreService/GetAppList/v1/"])
+        self.assertEqual(
+            seen_urls, ["https://api.steampowered.com/IStoreService/GetAppList/v1/"]
+        )
 
     def test_stage_results_report_per_stage_retry_and_error_counts(self) -> None:
         class CountingHttpClient(FakeHttpClient):
-            def get_json(self, url: str, *, stage: str, appid: int | None = None, params: dict[str, object] | None = None):
+            def get_json(
+                self,
+                url: str,
+                *,
+                stage: str,
+                appid: int | None = None,
+                params: dict[str, object] | None = None,
+            ):
                 self.retry_count += 2
                 self.error_count += 3
                 return {
@@ -427,7 +552,15 @@ class PipelineResumeTests(unittest.TestCase):
         write_csv(
             self.root / "data" / "stage_01_apps_catalog.csv",
             ["appid", "name", "last_modified", "price_change_number", "raw_json"],
-            [{"appid": 1, "name": "One", "last_modified": 0, "price_change_number": 0, "raw_json": "{}"}],
+            [
+                {
+                    "appid": 1,
+                    "name": "One",
+                    "last_modified": 0,
+                    "price_change_number": 0,
+                    "raw_json": "{}",
+                }
+            ],
         )
         stage_02_path = self.root / "data" / "stage_02_app_details.csv.gz"
         stage_02_path.parent.mkdir(parents=True, exist_ok=True)
@@ -471,7 +604,9 @@ class PipelineResumeTests(unittest.TestCase):
         call_log: list[tuple[str, str]] = []
         fail_helpful_once = {"value": True}
 
-        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def review_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_05":
                 raise AssertionError(stage)
             review_filter = str(params["filter"])
@@ -536,7 +671,9 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(second_result.rows_written, 4)
 
         final_rows = read_csv(self.root / "data" / "stage_05_reviews_dataset.csv.gz")
-        self.assertEqual([row["recommendationid"] for row in final_rows], ["r1", "r2", "h1", "h2"])
+        self.assertEqual(
+            [row["recommendationid"] for row in final_rows], ["r1", "r2", "h1", "h2"]
+        )
 
         final_progress = read_csv(self.root / "data" / "stage_05_progress.csv")
         self.assertEqual(final_progress[-1]["status"], "completed")
@@ -552,7 +689,9 @@ class PipelineResumeTests(unittest.TestCase):
 
         seen_params: list[dict[str, object]] = []
 
-        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def review_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_05":
                 raise AssertionError(stage)
             seen_params.append(dict(params))
@@ -592,14 +731,22 @@ class PipelineResumeTests(unittest.TestCase):
                 "cursor": "helpful-done",
             }
 
-        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(review_handler))
+        pipeline = Pipeline(
+            self.build_config(), http_client=FakeHttpClient(review_handler)
+        )
         pipeline.run_stage_05()
 
-        helpful_params = [params for params in seen_params if str(params.get("filter")) == "all"]
-        recent_params = [params for params in seen_params if str(params.get("filter")) == "recent"]
+        helpful_params = [
+            params for params in seen_params if str(params.get("filter")) == "all"
+        ]
+        recent_params = [
+            params for params in seen_params if str(params.get("filter")) == "recent"
+        ]
         self.assertTrue(helpful_params)
         self.assertTrue(recent_params)
-        self.assertTrue(all(params.get("day_range") == 365 for params in helpful_params))
+        self.assertTrue(
+            all(params.get("day_range") == 365 for params in helpful_params)
+        )
         self.assertTrue(all("day_range" not in params for params in recent_params))
 
     def test_stage_05_stops_after_repeated_helpful_cursor_loop(self) -> None:
@@ -613,7 +760,9 @@ class PipelineResumeTests(unittest.TestCase):
         helpful_index = {"value": 0}
         helpful_calls = {"value": 0}
 
-        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def review_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_05":
                 raise AssertionError(stage)
             if str(params["filter"]) == "recent":
@@ -657,7 +806,10 @@ class PipelineResumeTests(unittest.TestCase):
 
             raise AssertionError(params)
 
-        pipeline = Pipeline(self.build_config(review_cursor_loop_limit=3), http_client=FakeHttpClient(review_handler))
+        pipeline = Pipeline(
+            self.build_config(review_cursor_loop_limit=3),
+            http_client=FakeHttpClient(review_handler),
+        )
         result = pipeline.run_stage_05()
 
         self.assertEqual(result.rows_written, 2)
@@ -666,14 +818,18 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertEqual(progress_rows[-1]["total_unique"], "2")
         self.assertEqual(helpful_calls["value"], 5)
 
-    def test_stage_05_records_failed_progress_for_unexpected_exception_then_reraises(self) -> None:
+    def test_stage_05_records_failed_progress_for_unexpected_exception_then_reraises(
+        self,
+    ) -> None:
         write_csv(
             self.root / "data" / "stage_04_selected_games.csv",
             ["appid"],
             [{"appid": 10}],
         )
 
-        def review_handler(*, url: str, stage: str, appid: int | None, params: dict[str, object]):
+        def review_handler(
+            *, url: str, stage: str, appid: int | None, params: dict[str, object]
+        ):
             if stage != "stage_05":
                 raise AssertionError(stage)
             if str(params["filter"]) == "recent":
@@ -690,7 +846,9 @@ class PipelineResumeTests(unittest.TestCase):
                 }
             raise OSError("disk write failed")
 
-        pipeline = Pipeline(self.build_config(), http_client=FakeHttpClient(review_handler))
+        pipeline = Pipeline(
+            self.build_config(), http_client=FakeHttpClient(review_handler)
+        )
         with self.assertRaises(OSError):
             pipeline.run_stage_05()
 
@@ -704,7 +862,10 @@ class PipelineResumeTests(unittest.TestCase):
         self.assertIn("disk write failed", progress_rows[-1]["error"])
 
 
-@unittest.skipUnless(os.getenv("RUN_LIVE_STEAM_TESTS") == "1", "Set RUN_LIVE_STEAM_TESTS=1 to run live Steam tests.")
+@unittest.skipUnless(
+    os.getenv("RUN_LIVE_STEAM_TESTS") == "1",
+    "Set RUN_LIVE_STEAM_TESTS=1 to run live Steam tests.",
+)
 class PipelineLiveIntegrationTests(unittest.TestCase):
     VALID_APP_IDS = (10, 300)
     INVALID_APP_ID = 999_999_999

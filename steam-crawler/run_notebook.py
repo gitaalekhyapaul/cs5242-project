@@ -34,7 +34,6 @@ from steam_crawler.config import (
     resolve_reviews_per_game,
 )
 
-
 PREFLIGHT_TIMEOUT_SEC = 30
 
 FULL_CONFIG = {
@@ -76,6 +75,7 @@ FULL_LIMITS = {
     "max_games": None,
 }
 SMOKE_LIMITS = {"max_pages": 1, "max_apps": 25, "sample_size": 5, "max_games": 2}
+
 
 def resolve_run_mode(cli_value: str | None) -> str:
     run_mode = (cli_value or os.getenv("STEAM_RUN_MODE", "smoke")).strip().lower()
@@ -158,7 +158,9 @@ def run_preflight(root_dir: Path, *, endpoint_mode: str) -> None:
         raise RuntimeError(
             "STEAM_API_KEY is missing. Set it in the environment or in steam-crawler/.env before running."
         )
-    preflight_config = Config.from_env(root_dir, steam_api_key=steam_api_key, endpoint_mode=endpoint_mode)
+    preflight_config = Config.from_env(
+        root_dir, steam_api_key=steam_api_key, endpoint_mode=endpoint_mode
+    )
 
     preflight_payload = fetch_preflight_json(
         "Steam API preflight",
@@ -365,7 +367,9 @@ def main() -> int:
         label="STEAM_SAMPLE_SIZE",
     )
     min_recommendations = resolve_min_recommendations(args.min_recommendations)
-    reviews_per_game = resolve_reviews_per_game(args.reviews_per_game, default=active_config["reviews_per_game"])
+    reviews_per_game = resolve_reviews_per_game(
+        args.reviews_per_game, default=active_config["reviews_per_game"]
+    )
     max_games = resolve_max_games(args.max_games)
     active_limits = apply_limit_overrides(
         active_limits,
@@ -374,7 +378,9 @@ def main() -> int:
         sample_size=sample_size,
         max_games=max_games,
     )
-    active_config["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(args.gap_delay)
+    active_config["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(
+        args.gap_delay
+    )
     if args.loop_limit is not None:
         active_config["review_cursor_loop_limit"] = args.loop_limit
     if args.data_dir is not None:

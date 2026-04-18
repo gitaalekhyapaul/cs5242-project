@@ -12,7 +12,6 @@ from .config import Config
 from .logging_utils import CsvErrorLogger
 from .transforms import minified_json, utc_timestamp
 
-
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 

@@ -15,7 +15,6 @@ from tqdm import tqdm as text_tqdm
 from .config import (
     Config,
     load_project_env,
-    resolve_endpoint_mode,
     resolve_max_apps,
     resolve_max_games,
     resolve_max_pages,
@@ -175,7 +174,9 @@ class ReviewCollectionState:
     error: str = ""
 
     @classmethod
-    def from_progress_row(cls, appid: int, row: dict[str, str] | None) -> "ReviewCollectionState":
+    def from_progress_row(
+        cls, appid: int, row: dict[str, str] | None
+    ) -> "ReviewCollectionState":
         if not row:
             return cls(appid=appid, started_at=utc_timestamp())
         return cls(
@@ -261,7 +262,12 @@ def _read_completed_ids(path: Path, key: str = "appid") -> set[int]:
     return completed
 
 
-def _write_rows(path: Path, fieldnames: list[str], rows: list[dict[str, object]], append: bool = False) -> int:
+def _write_rows(
+    path: Path,
+    fieldnames: list[str],
+    rows: list[dict[str, object]],
+    append: bool = False,
+) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = "at" if append else "wt"
     write_header = not append or not path.exists()
@@ -276,7 +282,9 @@ def _write_rows(path: Path, fieldnames: list[str], rows: list[dict[str, object]]
 class ReviewCollector:
     """Encapsulates the two-stream review collection strategy for a single app."""
 
-    def __init__(self, *, config: Config, http_client: HttpClient, logger: logging.Logger) -> None:
+    def __init__(
+        self, *, config: Config, http_client: HttpClient, logger: logging.Logger
+    ) -> None:
         self.config = config
         self.http_client = http_client
         self.logger = logger
@@ -342,9 +350,17 @@ class ReviewCollector:
             else:
                 state.helpful_count += 1
             inner_progress.update(1)
-            if source_stream == "recent" and state.phase == "recent_quota" and state.recent_count >= self.config.recent_quota:
+            if (
+                source_stream == "recent"
+                and state.phase == "recent_quota"
+                and state.recent_count >= self.config.recent_quota
+            ):
                 break
-            if source_stream == "helpful" and state.phase == "helpful_fill" and state.helpful_count >= self.config.helpful_quota:
+            if (
+                source_stream == "helpful"
+                and state.phase == "helpful_fill"
+                and state.helpful_count >= self.config.helpful_quota
+            ):
                 break
             if state.total_unique + len(collected) >= self.config.reviews_per_game:
                 break
@@ -359,9 +375,13 @@ class ReviewCollector:
         exhausted = (
             not reviews
             or next_cursor == cursor
-            or repeated_cursor_counts[source_stream] >= self.config.review_cursor_loop_limit
+            or repeated_cursor_counts[source_stream]
+            >= self.config.review_cursor_loop_limit
         )
-        if repeated_cursor_counts[source_stream] >= self.config.review_cursor_loop_limit:
+        if (
+            repeated_cursor_counts[source_stream]
+            >= self.config.review_cursor_loop_limit
+        ):
             self.logger.warning(
                 "Stopping stage_05 %s pagination for app %s after %s repeated cursors without new reviews.",
                 source_stream,
@@ -441,7 +461,10 @@ class ReviewCollector:
                 checkpoint(page_rows, state)
 
             # Phase 3: if the total is still low, continue paging recent reviews as backfill.
-            while state.total_unique < self.config.reviews_per_game and not state.recent_exhausted:
+            while (
+                state.total_unique < self.config.reviews_per_game
+                and not state.recent_exhausted
+            ):
                 state.phase = "recent_backfill"
                 page_rows = self._consume_page(
                     appid=appid,
@@ -477,7 +500,9 @@ class Pipeline:
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
         self.config.log_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logger or setup_logger(config.log_dir)
-        self.error_logger = error_logger or CsvErrorLogger(config.log_dir / "errors.csv")
+        self.error_logger = error_logger or CsvErrorLogger(
+            config.log_dir / "errors.csv"
+        )
         self.paths = StagePaths(config.data_dir)
         self.http_client = http_client or HttpClient(
             config,
@@ -540,7 +565,9 @@ class Pipeline:
                 stats["helpful_count"] += 1
         return seen_ids, stats
 
-    def _restore_review_state(self, appid: int, row: dict[str, str] | None) -> tuple[ReviewCollectionState, set[str]]:
+    def _restore_review_state(
+        self, appid: int, row: dict[str, str] | None
+    ) -> tuple[ReviewCollectionState, set[str]]:
         state = ReviewCollectionState.from_progress_row(appid, row)
         seen_ids, stats = self._load_existing_review_rows(appid)
         state.recent_count = max(state.recent_count, stats["recent_count"])
@@ -586,7 +613,9 @@ class Pipeline:
         )
         return result
 
-    def run_stage_01(self, *, force_refresh: bool = False, max_pages: int | None = None) -> StageResult:
+    def run_stage_01(
+        self, *, force_refresh: bool = False, max_pages: int | None = None
+    ) -> StageResult:
         start = perf_counter()
         retry_count_start = self.http_client.retry_count
         error_count_start = self.http_client.error_count
@@ -618,11 +647,15 @@ class Pipeline:
                 }
                 if last_appid is not None:
                     params["last_appid"] = last_appid
-                response = self.http_client.get_json(self.config.app_list_url, stage="stage_01", params=params)
+                response = self.http_client.get_json(
+                    self.config.app_list_url, stage="stage_01", params=params
+                )
                 payload = response.get("response", {})
                 apps = payload.get("apps", [])
                 rows = [flatten_app_catalog_row(app) for app in apps]
-                rows_written += _write_rows(self.stage_01_path, STAGE_01_FIELDS, rows, append=rows_written > 0)
+                rows_written += _write_rows(
+                    self.stage_01_path, STAGE_01_FIELDS, rows, append=rows_written > 0
+                )
                 progress.update(len(rows))
                 page_count += 1
                 if max_pages is not None and page_count >= max_pages:
@@ -642,12 +675,16 @@ class Pipeline:
             error_count_start=error_count_start,
         )
 
-    def run_stage_02(self, *, force_refresh: bool = False, max_apps: int | None = None) -> StageResult:
+    def run_stage_02(
+        self, *, force_refresh: bool = False, max_apps: int | None = None
+    ) -> StageResult:
         start = perf_counter()
         retry_count_start = self.http_client.retry_count
         error_count_start = self.http_client.error_count
         if not self.stage_01_path.exists():
-            raise FileNotFoundError("Stage 01 output is required before running stage 02.")
+            raise FileNotFoundError(
+                "Stage 01 output is required before running stage 02."
+            )
 
         if force_refresh:
             for path in [self.stage_02_path]:
@@ -661,7 +698,11 @@ class Pipeline:
         total_apps = len(source_rows)
         scoped_appids = {int(row["appid"]) for row in source_rows}
         completed_scoped_ids = completed_ids & scoped_appids
-        if total_apps > 0 and len(completed_scoped_ids) >= total_apps and not force_refresh:
+        if (
+            total_apps > 0
+            and len(completed_scoped_ids) >= total_apps
+            and not force_refresh
+        ):
             self.logger.info("Reusing cached stage 02 output: %s", self.stage_02_path)
             return self._result(
                 "stage_02",
@@ -672,7 +713,12 @@ class Pipeline:
                 retry_count_start=retry_count_start,
                 error_count_start=error_count_start,
             )
-        progress = _progress_bar(total=total_apps, initial=len(completed_scoped_ids), desc="Stage 2 appdetails", unit="apps")
+        progress = _progress_bar(
+            total=total_apps,
+            initial=len(completed_scoped_ids),
+            desc="Stage 2 appdetails",
+            unit="apps",
+        )
         try:
             for row in source_rows:
                 appid = int(row["appid"])
@@ -694,7 +740,9 @@ class Pipeline:
                         params=params,
                     )
                 except RuntimeError as exc:
-                    self.logger.error("Skipping appdetails for %s after retries: %s", appid, exc)
+                    self.logger.error(
+                        "Skipping appdetails for %s after retries: %s", appid, exc
+                    )
                     progress.update(1)
                     continue
                 # Persist every successful appdetails row so reruns only revisit missing appids.
@@ -718,12 +766,16 @@ class Pipeline:
             error_count_start=error_count_start,
         )
 
-    def run_stage_03(self, *, force_refresh: bool = False, max_apps: int | None = None) -> StageResult:
+    def run_stage_03(
+        self, *, force_refresh: bool = False, max_apps: int | None = None
+    ) -> StageResult:
         start = perf_counter()
         retry_count_start = self.http_client.retry_count
         error_count_start = self.http_client.error_count
         if not self.stage_01_path.exists() or not self.stage_02_path.exists():
-            raise FileNotFoundError("Stages 01 and 02 outputs are required before running stage 03.")
+            raise FileNotFoundError(
+                "Stages 01 and 02 outputs are required before running stage 03."
+            )
 
         if self.stage_03_path.exists() and not force_refresh:
             self.logger.info("Reusing cached stage 03 output: %s", self.stage_03_path)
@@ -739,7 +791,9 @@ class Pipeline:
         if force_refresh and self.stage_03_path.exists():
             self.stage_03_path.unlink()
 
-        details_by_appid = {row["appid"]: row for row in _iter_csv_rows(self.stage_02_path)}
+        details_by_appid = {
+            row["appid"]: row for row in _iter_csv_rows(self.stage_02_path)
+        }
         rows_written = 0
         batch: list[dict[str, object]] = []
         source_rows = list(_iter_csv_rows(self.stage_01_path))
@@ -754,10 +808,20 @@ class Pipeline:
             )
             batch.append(merged)
             if len(batch) >= 1000:
-                rows_written += _write_rows(self.stage_03_path, STAGE_03_FIELDS, batch, append=self.stage_03_path.exists())
+                rows_written += _write_rows(
+                    self.stage_03_path,
+                    STAGE_03_FIELDS,
+                    batch,
+                    append=self.stage_03_path.exists(),
+                )
                 batch.clear()
         if batch:
-            rows_written += _write_rows(self.stage_03_path, STAGE_03_FIELDS, batch, append=self.stage_03_path.exists())
+            rows_written += _write_rows(
+                self.stage_03_path,
+                STAGE_03_FIELDS,
+                batch,
+                append=self.stage_03_path.exists(),
+            )
 
         return self._result(
             "stage_03",
@@ -769,12 +833,16 @@ class Pipeline:
             error_count_start=error_count_start,
         )
 
-    def run_stage_04(self, *, force_refresh: bool = False, sample_size: int | None = None) -> StageResult:
+    def run_stage_04(
+        self, *, force_refresh: bool = False, sample_size: int | None = None
+    ) -> StageResult:
         start = perf_counter()
         retry_count_start = self.http_client.retry_count
         error_count_start = self.http_client.error_count
         if not self.stage_03_path.exists():
-            raise FileNotFoundError("Stage 03 output is required before running stage 04.")
+            raise FileNotFoundError(
+                "Stage 03 output is required before running stage 04."
+            )
 
         if self.stage_04_path.exists() and not force_refresh:
             self.logger.info("Reusing cached stage 04 output: %s", self.stage_04_path)
@@ -791,7 +859,9 @@ class Pipeline:
             self.stage_04_path.unlink()
 
         eligible_rows = [
-            row for row in _iter_csv_rows(self.stage_03_path) if str(row.get("eligible_for_sampling", "")).lower() == "true"
+            row
+            for row in _iter_csv_rows(self.stage_03_path)
+            if str(row.get("eligible_for_sampling", "")).lower() == "true"
         ]
         # Sampling happens after all metadata is cached, so reruns are deterministic and cheap.
         selected_rows = sample_rows(
@@ -819,12 +889,16 @@ class Pipeline:
             error_count_start=error_count_start,
         )
 
-    def run_stage_05(self, *, force_refresh: bool = False, max_games: int | None = None) -> StageResult:
+    def run_stage_05(
+        self, *, force_refresh: bool = False, max_games: int | None = None
+    ) -> StageResult:
         start = perf_counter()
         retry_count_start = self.http_client.retry_count
         error_count_start = self.http_client.error_count
         if not self.stage_04_path.exists():
-            raise FileNotFoundError("Stage 04 output is required before running stage 05.")
+            raise FileNotFoundError(
+                "Stage 04 output is required before running stage 05."
+            )
 
         if force_refresh:
             for path in [self.stage_05_path, self.stage_05_progress_path]:
@@ -845,7 +919,11 @@ class Pipeline:
         selected_games = list(_iter_csv_rows(self.stage_04_path))
         if max_games is not None:
             selected_games = selected_games[:max_games]
-        if selected_games and initial_completed_count >= len(selected_games) and not force_refresh:
+        if (
+            selected_games
+            and initial_completed_count >= len(selected_games)
+            and not force_refresh
+        ):
             self.logger.info("Reusing cached stage 05 output: %s", self.stage_05_path)
             return self._result(
                 "stage_05",
@@ -868,7 +946,9 @@ class Pipeline:
                 appid = int(row["appid"])
                 if appid in completed_ids:
                     continue
-                state, seen_ids = self._restore_review_state(appid, progress_rows.get(str(appid)))
+                state, seen_ids = self._restore_review_state(
+                    appid, progress_rows.get(str(appid))
+                )
                 if state.status in {"completed", "exhausted"}:
                     state.finished_at = state.finished_at or utc_timestamp()
                     self._append_review_progress(state)
@@ -880,7 +960,10 @@ class Pipeline:
                 state.finished_at = ""
                 self._append_review_progress(state)
 
-                def checkpoint(page_rows: list[dict[str, object]], checkpoint_state: ReviewCollectionState) -> None:
+                def checkpoint(
+                    page_rows: list[dict[str, object]],
+                    checkpoint_state: ReviewCollectionState,
+                ) -> None:
                     nonlocal rows_written
                     if page_rows:
                         rows_written += _write_rows(
@@ -902,7 +985,11 @@ class Pipeline:
                         state=state,
                         checkpoint=checkpoint,
                     )
-                    state.status = "completed" if state.total_unique >= self.config.reviews_per_game else "exhausted"
+                    state.status = (
+                        "completed"
+                        if state.total_unique >= self.config.reviews_per_game
+                        else "exhausted"
+                    )
                     state.finished_at = utc_timestamp()
                     self._append_review_progress(state)
                     completed_ids.add(appid)
@@ -914,9 +1001,13 @@ class Pipeline:
                     self._append_review_progress(state)
                     outer_progress.update(1)
                     if isinstance(exc, RuntimeError):
-                        self.logger.error("Failed to collect reviews for app %s: %s", appid, exc)
+                        self.logger.error(
+                            "Failed to collect reviews for app %s: %s", appid, exc
+                        )
                         continue
-                    self.logger.exception("Unexpected failure while collecting reviews for app %s", appid)
+                    self.logger.exception(
+                        "Unexpected failure while collecting reviews for app %s", appid
+                    )
                     raise
         finally:
             outer_progress.close()
@@ -941,15 +1032,25 @@ class Pipeline:
         max_games: int | None = None,
     ) -> list[StageResult]:
         results = [self.run_stage_01(force_refresh=force_refresh, max_pages=max_pages)]
-        results.append(self.run_stage_02(force_refresh=force_refresh, max_apps=max_apps))
-        results.append(self.run_stage_03(force_refresh=force_refresh, max_apps=max_apps))
-        results.append(self.run_stage_04(force_refresh=force_refresh, sample_size=sample_size))
-        results.append(self.run_stage_05(force_refresh=force_refresh, max_games=max_games))
+        results.append(
+            self.run_stage_02(force_refresh=force_refresh, max_apps=max_apps)
+        )
+        results.append(
+            self.run_stage_03(force_refresh=force_refresh, max_apps=max_apps)
+        )
+        results.append(
+            self.run_stage_04(force_refresh=force_refresh, sample_size=sample_size)
+        )
+        results.append(
+            self.run_stage_05(force_refresh=force_refresh, max_games=max_games)
+        )
         return results
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the staged Steam dataset crawler.")
+    parser = argparse.ArgumentParser(
+        description="Run the staged Steam dataset crawler."
+    )
     parser.add_argument(
         "--root",
         default=Path(__file__).resolve().parents[2],
@@ -1022,7 +1123,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional override for the repeated-cursor stop-gap in stage 5. Overrides STEAM_CURSOR_LOOP_LIMIT from the environment or .env.",
     )
-    parser.add_argument("--force-refresh", action="store_true", help="Ignore cached outputs for the selected stage.")
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore cached outputs for the selected stage.",
+    )
     return parser
 
 
@@ -1031,24 +1136,40 @@ def main() -> int:
     args = parser.parse_args()
     load_project_env(args.root)
     config_overrides: dict[str, object] = {"endpoint_mode": args.endpoint_mode}
-    config_overrides["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(args.gap_delay)
+    config_overrides["rate_limit_gap_delay_sec"] = resolve_rate_limit_gap_delay_sec(
+        args.gap_delay
+    )
     if args.loop_limit is not None:
         config_overrides["review_cursor_loop_limit"] = args.loop_limit
     if args.data_dir is not None:
         config_overrides["data_dir"] = args.data_dir
-    config_overrides["min_recommendations"] = resolve_min_recommendations(args.min_recommendations)
-    config_overrides["reviews_per_game"] = resolve_reviews_per_game(args.reviews_per_game)
+    config_overrides["min_recommendations"] = resolve_min_recommendations(
+        args.min_recommendations
+    )
+    config_overrides["reviews_per_game"] = resolve_reviews_per_game(
+        args.reviews_per_game
+    )
     max_pages = resolve_max_pages(args.max_pages)
     max_apps = resolve_max_apps(args.max_apps)
     max_games = resolve_max_games(args.max_games)
     config = Config.from_env(args.root, **config_overrides)
     pipeline = Pipeline(config)
     dispatch = {
-        "stage1": lambda: pipeline.run_stage_01(force_refresh=args.force_refresh, max_pages=max_pages),
-        "stage2": lambda: pipeline.run_stage_02(force_refresh=args.force_refresh, max_apps=max_apps),
-        "stage3": lambda: pipeline.run_stage_03(force_refresh=args.force_refresh, max_apps=max_apps),
-        "stage4": lambda: pipeline.run_stage_04(force_refresh=args.force_refresh, sample_size=args.sample_size),
-        "stage5": lambda: pipeline.run_stage_05(force_refresh=args.force_refresh, max_games=max_games),
+        "stage1": lambda: pipeline.run_stage_01(
+            force_refresh=args.force_refresh, max_pages=max_pages
+        ),
+        "stage2": lambda: pipeline.run_stage_02(
+            force_refresh=args.force_refresh, max_apps=max_apps
+        ),
+        "stage3": lambda: pipeline.run_stage_03(
+            force_refresh=args.force_refresh, max_apps=max_apps
+        ),
+        "stage4": lambda: pipeline.run_stage_04(
+            force_refresh=args.force_refresh, sample_size=args.sample_size
+        ),
+        "stage5": lambda: pipeline.run_stage_05(
+            force_refresh=args.force_refresh, max_games=max_games
+        ),
         "all": lambda: pipeline.run_all_missing(
             force_refresh=args.force_refresh,
             max_pages=max_pages,
