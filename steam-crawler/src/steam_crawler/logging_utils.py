@@ -6,7 +6,6 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-
 LOGGER_NAME = "steam_crawler"
 
 
@@ -22,7 +21,8 @@ def setup_logger(log_dir: Path) -> logging.Logger:
     desired_log_path = (log_dir / "run.log").resolve()
 
     has_stream_handler = any(
-        isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler)
+        isinstance(handler, logging.StreamHandler)
+        and not isinstance(handler, logging.FileHandler)
         for handler in logger.handlers
     )
     if not has_stream_handler:
@@ -30,8 +30,15 @@ def setup_logger(log_dir: Path) -> logging.Logger:
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
-    existing_file_handlers = [handler for handler in logger.handlers if isinstance(handler, logging.FileHandler)]
-    file_handler_matches = any(Path(handler.baseFilename).resolve() == desired_log_path for handler in existing_file_handlers)
+    existing_file_handlers = [
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, logging.FileHandler)
+    ]
+    file_handler_matches = any(
+        Path(handler.baseFilename).resolve() == desired_log_path
+        for handler in existing_file_handlers
+    )
     if not file_handler_matches:
         for handler in existing_file_handlers:
             logger.removeHandler(handler)

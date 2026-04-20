@@ -14,7 +14,11 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from steam_crawler.config import Config
-from steam_crawler.http_client import HttpClient, compute_backoff_delay, parse_retry_after
+from steam_crawler.http_client import (
+    HttpClient,
+    compute_backoff_delay,
+    parse_retry_after,
+)
 
 
 class RecordingErrorLogger:
@@ -80,7 +84,9 @@ class RetryDelayTests(unittest.TestCase):
     def test_parse_http_date_retry_after(self) -> None:
         now = datetime(2024, 1, 1, tzinfo=timezone.utc)
         retry_at = now + timedelta(seconds=90)
-        delay = parse_retry_after({"Retry-After": format_datetime(retry_at, usegmt=True)}, now=now)
+        delay = parse_retry_after(
+            {"Retry-After": format_datetime(retry_at, usegmt=True)}, now=now
+        )
         self.assertEqual(delay, 90.0)
 
     def test_parse_reset_epoch_header(self) -> None:
@@ -145,7 +151,9 @@ class HttpClientErrorHandlingTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                client._host_delay("https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"),
+                client._host_delay(
+                    "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"
+                ),
                 1.5,
             )
             self.assertEqual(
@@ -153,7 +161,9 @@ class HttpClientErrorHandlingTests(unittest.TestCase):
                 2.5,
             )
             self.assertEqual(
-                client._request_bucket("https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"),
+                client._request_bucket(
+                    "https://gpaul.cc/steamapi/IStoreService/GetAppList/v1/"
+                ),
                 "steam_api",
             )
             self.assertEqual(

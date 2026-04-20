@@ -7,8 +7,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from src.steam_crawler.config import load_project_env, resolve_data_dir as resolve_config_data_dir
-
+from src.steam_crawler.config import (
+    load_project_env,
+    resolve_data_dir as resolve_config_data_dir,
+)
 
 CSV_FIELD_SIZE_LIMIT_READY = False
 
@@ -157,7 +159,15 @@ def print_summary(stage_paths: dict[str, Path], *, top_n: int, error_tail: int) 
     status_counts = stage_05_status_counts(stage_paths["stage_05_progress"])
 
     print_section("Stage Output Counts")
-    for name in ["stage_01", "stage_02", "stage_03", "stage_04", "stage_05", "stage_05_progress", "errors"]:
+    for name in [
+        "stage_01",
+        "stage_02",
+        "stage_03",
+        "stage_04",
+        "stage_05",
+        "stage_05_progress",
+        "errors",
+    ]:
         print(f"{name:>16}: {counts[name]:>12,}")
 
     print_section("Coverage")
@@ -207,22 +217,56 @@ def print_summary(stage_paths: dict[str, Path], *, top_n: int, error_tail: int) 
         retry_after = row.get("retry_after_seconds", "") or "-"
         exc_type = row.get("exception_type", "")
         exc_message = row.get("exception_message", "")
-        print(f"[{stage}] appid={appid or '-'} status={status} retry_after={retry_after} {exc_type}: {exc_message}")
+        print(
+            f"[{stage}] appid={appid or '-'} status={status} retry_after={retry_after} {exc_type}: {exc_message}"
+        )
 
 
 def print_app_inspection(stage_paths: dict[str, Path], appid: int | None) -> None:
     print_section("Optional App Inspection")
     if appid is None:
-        print("Pass --appid to inspect one app across Stage 2, Stage 4, and Stage 5 outputs.")
+        print(
+            "Pass --appid to inspect one app across Stage 2, Stage 4, and Stage 5 outputs."
+        )
         return
 
     appid_text = str(appid)
-    stage_02_rows = [row for row in iter_csv_rows(stage_paths["stage_02"]) if row.get("appid") == appid_text] if stage_paths["stage_02"].exists() else []
-    stage_04_rows = [row for row in iter_csv_rows(stage_paths["stage_04"]) if row.get("appid") == appid_text] if stage_paths["stage_04"].exists() else []
-    stage_05_progress_rows = [row for row in iter_csv_rows(stage_paths["stage_05_progress"]) if row.get("appid") == appid_text] if stage_paths["stage_05_progress"].exists() else []
-    stage_05_review_count = sum(
-        1 for row in iter_csv_rows(stage_paths["stage_05"]) if row.get("appid") == appid_text
-    ) if stage_paths["stage_05"].exists() else 0
+    stage_02_rows = (
+        [
+            row
+            for row in iter_csv_rows(stage_paths["stage_02"])
+            if row.get("appid") == appid_text
+        ]
+        if stage_paths["stage_02"].exists()
+        else []
+    )
+    stage_04_rows = (
+        [
+            row
+            for row in iter_csv_rows(stage_paths["stage_04"])
+            if row.get("appid") == appid_text
+        ]
+        if stage_paths["stage_04"].exists()
+        else []
+    )
+    stage_05_progress_rows = (
+        [
+            row
+            for row in iter_csv_rows(stage_paths["stage_05_progress"])
+            if row.get("appid") == appid_text
+        ]
+        if stage_paths["stage_05_progress"].exists()
+        else []
+    )
+    stage_05_review_count = (
+        sum(
+            1
+            for row in iter_csv_rows(stage_paths["stage_05"])
+            if row.get("appid") == appid_text
+        )
+        if stage_paths["stage_05"].exists()
+        else 0
+    )
 
     print(f"appid={appid_text}")
     print(f"  stage_02 rows: {len(stage_02_rows)}")

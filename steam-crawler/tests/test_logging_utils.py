@@ -31,9 +31,15 @@ class SetupLoggerTests(unittest.TestCase):
             logger = setup_logger(first_dir)
             logger = setup_logger(second_dir)
 
-            file_handlers = [handler for handler in logger.handlers if isinstance(handler, logging.FileHandler)]
+            file_handlers = [
+                handler
+                for handler in logger.handlers
+                if isinstance(handler, logging.FileHandler)
+            ]
             self.assertEqual(len(file_handlers), 1)
-            self.assertEqual(Path(file_handlers[0].baseFilename), (second_dir / "run.log").resolve())
+            self.assertEqual(
+                Path(file_handlers[0].baseFilename), (second_dir / "run.log").resolve()
+            )
 
 
 if __name__ == "__main__":

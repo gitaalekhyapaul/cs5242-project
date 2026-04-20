@@ -8,6 +8,12 @@ version = "0.1.0"
 description = "Stage-based Steam dataset crawler with CSV caching and notebook orchestration."
 requires-python = ">=3.10"
 dependencies = [
+  "numpy>=1.26.0",
+  "pandas>=2.2.0",
+  "pyarrow>=17.0.0",
+  "matplotlib>=3.8.0",
+  "seaborn>=0.13.0",
+  "kaggle>=1.6.17",
   "psutil>=6.1.0",
   "python-dotenv>=1.0.1",
   "requests>=2.32.0",

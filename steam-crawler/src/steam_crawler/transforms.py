@@ -29,9 +29,15 @@ def flatten_app_details(appid: int, payload: dict[str, object]) -> dict[str, obj
     keyed_payload = payload.get(str(appid), {}) if isinstance(payload, dict) else {}
     data = keyed_payload.get("data", {}) if isinstance(keyed_payload, dict) else {}
     categories = data.get("categories", []) if isinstance(data, dict) else []
-    category_ids = [str(category.get("id", "")) for category in categories if isinstance(category, dict)]
+    category_ids = [
+        str(category.get("id", ""))
+        for category in categories
+        if isinstance(category, dict)
+    ]
     category_descriptions = [
-        str(category.get("description", "")) for category in categories if isinstance(category, dict)
+        str(category.get("description", ""))
+        for category in categories
+        if isinstance(category, dict)
     ]
     recommendations = data.get("recommendations", {}) if isinstance(data, dict) else {}
     return {
@@ -40,12 +46,18 @@ def flatten_app_details(appid: int, payload: dict[str, object]) -> dict[str, obj
         "type": data.get("type", "") if isinstance(data, dict) else "",
         "category_ids": "|".join(filter(None, category_ids)),
         "category_descriptions": "|".join(filter(None, category_descriptions)),
-        "recommendations_total": recommendations.get("total", "") if isinstance(recommendations, dict) else "",
+        "recommendations_total": (
+            recommendations.get("total", "")
+            if isinstance(recommendations, dict)
+            else ""
+        ),
         "raw_json": minified_json(payload),
     }
 
 
-def flatten_review_row(appid: int, review: dict[str, object], source_stream: str) -> dict[str, object]:
+def flatten_review_row(
+    appid: int, review: dict[str, object], source_stream: str
+) -> dict[str, object]:
     """Normalize one Steam review row for the final dataset CSV."""
 
     author = review.get("author", {}) if isinstance(review, dict) else {}
@@ -74,7 +86,11 @@ def merge_catalog_and_details(
 
     detail_success = str(detail_row.get("success", "")).lower() == "true"
     app_type = detail_row.get("type", "")
-    eligible = detail_success and app_type == "game" and numeric_recommendations > min_recommendations
+    eligible = (
+        detail_success
+        and app_type == "game"
+        and numeric_recommendations > min_recommendations
+    )
     return {
         "appid": app_row.get("appid", ""),
         "name": app_row.get("name", ""),
@@ -91,7 +107,9 @@ def merge_catalog_and_details(
     }
 
 
-def sample_rows(rows: list[dict[str, str]], sample_size: int, seed: int) -> list[dict[str, str]]:
+def sample_rows(
+    rows: list[dict[str, str]], sample_size: int, seed: int
+) -> list[dict[str, str]]:
     """Sample rows deterministically so reruns reproduce the same selected games."""
 
     if len(rows) <= sample_size:
