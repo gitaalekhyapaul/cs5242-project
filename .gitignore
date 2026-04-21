@@ -1,0 +1,184 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+share/python-wheels/
+var/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.tox/
+.nox/
+htmlcov/
+
+# Type checker / linters / static analysis
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django / Flask / FastAPI local artifacts
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+profile_default/
+ipython_config.py
+
+# IPython
+.ipython/
+
+# pyenv
+.python-version
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Poetry
+poetry.toml
+
+# Pipenv
+Pipfile.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# UV
+.uv/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.suo
+*.user
+*.userossc
+*.sln.docstates
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment and secrets
+.env
+.env.*
+*.env
+*.local
+
+# Logs and runtime dumps
+*.pid
+*.pid.lock
+*.seed
+*.out
+*.err
+*.stackdump
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Documentation builds
+docs/_build/
+site/
+
+# MkDocs / Sphinx
+.doctrees/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Data science / ML artifacts
+mlruns/
+wandb/
+lightning_logs/
+tensorboard/
+runs/
+checkpoints/
+artifacts/
+outputs/
+*.ckpt
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.onnx
+*.joblib
+*.pkl
+
+# Common data files (uncomment if you want all ignored by default)
+# data/
+# datasets/
+# *.csv
+# *.tsv
+# *.parquet
+# *.feather
+
+# Project-specific large/generated artifacts
+steam-crawler/data/*.parquet
