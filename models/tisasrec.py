@@ -109,7 +109,7 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
 
 
 class TiSASRec(torch.nn.Module):
-    def __init__(self, item_num, *, args, num_metadata, category_num):
+    def __init__(self, item_num, *, args, metadata_num, category_num):
         super(TiSASRec, self).__init__()
 
         self.item_num = item_num
@@ -124,7 +124,7 @@ class TiSASRec(torch.nn.Module):
 
         #* metadata embedding injection
         self.metadata_cat_emb = torch.nn.EmbeddingBag(category_num, args.hidden_size // 2)
-        self.metadata_num_emb = torch.nn.Linear(num_metadata, args.hidden_size // 2)
+        self.metadata_num_emb = torch.nn.Linear(metadata_num, args.hidden_size // 2)
         self.fusion = torch.nn.Linear(args.hidden_size + 2 * (args.hidden_size // 2), args.hidden_size)
         self.emb_layernorm = torch.nn.LayerNorm(args.hidden_size)
 

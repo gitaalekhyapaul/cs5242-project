@@ -4,13 +4,16 @@ import torch
 import pickle
 import argparse
 
-from models.tisasrec import TiSASRec, TiSASRecWithMetadata
+from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
 from models.sasrec import SASRec
 from tqdm import tqdm
 from utils import *
 
 USE_BASELINE_MODEL = False
 ENRICH_WITH_METADATA = False
+
+#* app_price, app_average_score, app_num_reviews, review_rating
+METADATA_NUM = 4
 
 def str2bool(s):
     if s not in {'false', 'true'}:
@@ -67,18 +70,16 @@ sampler = DataSampler(
     n_workers=3,
 )
 
-#* num_metadata = 4
-#* app_price, app_average_score, app_num_reviews, review_rating
 model = SASRec if USE_BASELINE_MODEL else \
 \
-TiSASRecWithMetadata(
+TiSASRec(
     item_num,
     args=args,
-    num_metadata=4,
+    metadata_num=METADATA_NUM,
     category_num=100,
 ).to(args.device) if ENRICH_WITH_METADATA else \
 \
-TiSASRec(item_num, args=args).to(args.device)
+TiSASRecWithoutMetadata(item_num, args=args).to(args.device)
 
 for name, param in model.named_parameters():
     try:
