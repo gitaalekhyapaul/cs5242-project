@@ -45,7 +45,7 @@ with open(os.path.join(args.dataset + '_' + args.train_dir, 'args.txt'), 'w') as
 f.close()
 
 dataset = data_partition(args.dataset)
-[user_train, user_valid, user_test, user_num, item_num, time_num] = dataset
+[user_train, user_valid, user_test, user_num, item_num, time_num, category_num] = dataset
 num_batch = len(user_train) // args.batch_size
 cc = 0.0
 for u in user_train:
@@ -76,7 +76,7 @@ TiSASRec(
     item_num,
     args=args,
     metadata_num=METADATA_NUM,
-    category_num=100,
+    category_num=category_num,
 ).to(args.device) if ENRICH_WITH_METADATA else \
 \
 TiSASRecWithoutMetadata(item_num, args=args).to(args.device)

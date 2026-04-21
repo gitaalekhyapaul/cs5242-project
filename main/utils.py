@@ -1,6 +1,7 @@
 import sys
 import copy
 import random
+import ast
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
@@ -150,6 +151,7 @@ def cleanAndSort(User, time_map):
 def data_partition(fname):
     user_num = 0
     item_num = 0
+    categories_set = set()
     User = defaultdict(list)
     user_train = {}
     user_valid = {}
@@ -174,13 +176,16 @@ def data_partition(fname):
     f = open('data/%s.txt' % fname, 'r') # try?...ugly data pre-processing code
     for line in f:
         try:
-            u, i, rating, timestamp = line.rstrip().split('\t')
+            u, i, rating, timestamp, categories = line.rstrip().split('\t')
         except:
             u, i, timestamp = line.rstrip().split('\t')
         u = int(u)
         i = int(i)
         timestamp = float(timestamp)
-        if user_count[u]<5 or item_count[i]<5: # hard-coded
+        categories = ast.literal_eval(categories)
+        for category in categories:
+            categories_set.add(category)
+        if user_count[u] < 5 or item_count[i] < 5: # hard-coded
             continue
         time_set.add(timestamp)
         User[u].append([i, timestamp])
@@ -201,11 +206,14 @@ def data_partition(fname):
             user_test[user] = []
             user_test[user].append(User[user][-1])
     print('Preparing done...')
-    return [user_train, user_valid, user_test, user_num, item_num, time_num]
+
+    category_num = len(categories_set)
+
+    return [user_train, user_valid, user_test, user_num, item_num, time_num, category_num]
 
 
 def evaluate(model, dataset, args):
-    [train, valid, test, user_num, item_num, time_num] = copy.deepcopy(dataset)
+    [train, valid, test, user_num, item_num, time_num, category_num] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     HT = 0.0
@@ -261,7 +269,7 @@ def evaluate(model, dataset, args):
 
 
 def evaluate_valid(model, dataset, args):
-    [train, valid, test, user_num, item_num, time_num] = copy.deepcopy(dataset)
+    [train, valid, test, user_num, item_num, time_num, category_num] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     valid_user = 0.0
