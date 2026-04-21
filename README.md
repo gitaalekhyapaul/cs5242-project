@@ -26,12 +26,14 @@ Useful references:
 
 ```text
 .
+|-- .env.example
 |-- pyproject.toml
 |-- README.md
 |-- models/
 |   |-- prepare_mobilerec.py
 |   |-- sasrec.py
-|   `-- train_sasrec.py
+|   |-- train_sasrec.py
+|   `-- upload_processed_to_kaggle.py
 |-- data/
 |   |-- raw/
 |   |-- processed/
@@ -50,11 +52,15 @@ Notes:
 
 This project is configured for:
 - Python `3.10.12`
-- `torch==2.9.1+cu129`
+- `torch==2.9.1+cu129` on Linux
+- `torch==2.9.1` on macOS arm64
 - CUDA runtime `12.9`
 - GPU validation target: `Tesla T4`
 
-The root `pyproject.toml` is set up for `uv` and pins the PyTorch CUDA 12.9 wheels from the official PyTorch index.
+The root `pyproject.toml` is set up for `uv` with platform-specific PyTorch resolution:
+
+- Linux resolves the CUDA 12.9 wheel from the official PyTorch index for cluster training.
+- macOS arm64 resolves the standard PyPI wheel so local development tools like `uv sync` work on Apple Silicon.
 
 ## Setup With uv
 
@@ -131,6 +137,43 @@ This writes:
 - `data/processed/mobilerec/item_mapping.parquet`
 - `data/processed/mobilerec/app_metadata.parquet`
 - `data/processed/mobilerec/summary.json`
+
+## Optional: Upload Processed Data To Kaggle
+
+The root project now includes a terminal uploader at `models/upload_processed_to_kaggle.py`.
+It follows the same Kaggle credential contract used in `steam-crawler/notebooks/eda.ipynb`:
+
+- `KAGGLE_USERNAME`
+- `KAGGLE_API_TOKEN`
+
+Create the root env file first:
+
+```bash
+cp .env.example .env
+```
+
+Then upload any processed directory with a Kaggle dataset handle:
+
+```bash
+upload-processed-to-kaggle \
+  --input-dir data/processed/mobilerec \
+  --dataset-handle <your-kaggle-username>/<dataset-slug>
+```
+
+The script:
+
+- loads credentials from the root `.env` by default
+- lets the CLI override `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN`
+- stages every non-hidden file under the input directory into a temporary upload bundle
+- preserves the relative file layout inside the Kaggle dataset version
+- maps `KAGGLE_API_TOKEN` to `KAGGLE_KEY` internally for the Kaggle client
+
+Useful flags:
+
+- `--env-file /path/to/.env` to use a different env file
+- `--kaggle-username <name>` to override `KAGGLE_USERNAME`
+- `--kaggle-api-token <token>` to override `KAGGLE_API_TOKEN`
+- `--version-notes "..."` to control the Kaggle version message
 
 For a faster smoke run:
 

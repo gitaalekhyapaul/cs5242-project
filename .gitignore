@@ -131,6 +131,7 @@ Desktop.ini
 .env.*
 *.env
 *.local
+!.env.example
 
 # Logs and runtime dumps
 *.pid
