@@ -115,12 +115,20 @@ class TiSASRec(torch.nn.Module):
         self.item_num = item_num
         self.dev = args.device
 
+        #* embedding layers
         self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_size, padding_idx=0)
         self.abs_pos_K_emb = torch.nn.Embedding(args.maxlen, args.hidden_size)
         self.abs_pos_V_emb = torch.nn.Embedding(args.maxlen, args.hidden_size)
         self.time_matrix_K_emb = torch.nn.Embedding(args.time_span+1, args.hidden_size)
         self.time_matrix_V_emb = torch.nn.Embedding(args.time_span+1, args.hidden_size)
 
+        #* metadata embedding injection
+        self.metadata_cat_emb = torch.nn.EmbeddingBag(category_num, args.hidden_size // 2)
+        self.metadata_num_emb = torch.nn.Linear(num_metadata, args.hidden_size // 2)
+        self.fusion = torch.nn.Linear(args.hidden_size + 2 * (args.hidden_size // 2), args.hidden_size)
+        self.emb_layernorm = torch.nn.LayerNorm(args.hidden_size)
+
+        #* dropout layers
         self.item_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
         self.abs_pos_K_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
         self.abs_pos_V_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
@@ -152,12 +160,26 @@ class TiSASRec(torch.nn.Module):
             new_fwd_layer = PointWiseFeedForward(args.hidden_size, args.dropout_rate)
             self.forward_layers.append(new_fwd_layer)
 
-    def seq2vec(self, log_seqs, embed_only=False):
-        vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
+
+    def seq2vec(self, log_seqs, metadata_seqs, category_seqs, embed_only=False):
+        item_vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
+        metadata_cat_vecs = self.metadata_cat_emb(category_seqs)
+        metadata_num_vecs = self.metadata_num_emb(metadata_seqs)
+
+        item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
+
+        combined = torch.cat([
+            item_vecs,
+            metadata_num_vecs,
+            metadata_cat_vecs,
+        ], dim=-1)
+
+        vecs = self.fusion(combined)
 
         if not embed_only:
-            vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
             vecs = self.item_emb_dropout(vecs)
+
+        vecs = self.emb_layernorm(vecs)
 
         return vecs
 
@@ -236,37 +258,15 @@ class TiSASRec(torch.nn.Module):
         return logits # preds # (U, I)
 
 
-class TiSASRecWithMetadata(TiSASRec):
+class TiSASRecWithoutMetadata(TiSASRec):
     def __init__(self, *user_args, **kwargs):
-        super(TiSASRecWithMetadata, self).__init__(*user_args, **kwargs)
-        args = kwargs.get('args')
-        num_item_categories = kwargs.get('num_item_categories')
-        num_metadata = kwargs.get('num_metadata')
+        super(TiSASRecWithoutMetadata, self).__init__(*user_args, **kwargs)
 
-        self.metadata_cat_emb = torch.nn.EmbeddingBag(num_item_categories, args.hidden_size // 2)
-        self.metadata_num_emb = torch.nn.Linear(num_metadata, args.hidden_size // 2)
-        self.fusion = torch.nn.Linear(args.hidden_size + 2 * (args.hidden_size // 2), args.hidden_size)
-        self.emb_layernorm = torch.nn.LayerNorm(args.hidden_size)
-
-    def seq2vec(self, log_seqs, metadata_seqs, category_seqs, embed_only=False):
-        item_vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
-        metadata_cat_vecs = self.metadata_cat_emb(category_seqs)
-        metadata_num_vecs = self.metadata_num_emb(metadata_seqs)
-
-        item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
-
-        combined = torch.cat([
-            item_vecs,
-            metadata_num_vecs,
-            metadata_cat_vecs,
-        ], dim=-1)
-
-        vecs = self.fusion(combined)
+    def seq2vec(self, log_seqs, embed_only=False):
+        vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
 
         if not embed_only:
+            vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
             vecs = self.item_emb_dropout(vecs)
 
-        vecs = self.emb_layernorm(vecs)
-
         return vecs
-
