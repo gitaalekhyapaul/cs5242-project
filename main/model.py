@@ -1,8 +1,6 @@
 from datasets import load_dataset
 import numpy as np
 import torch
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
 
 # TiSASRec architecture implementation
 
@@ -110,10 +108,9 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
 
 
 class TiSASRec(torch.nn.Module):
-    def __init__(self, user_num, item_num, time_num, args):
+    def __init__(self, item_num, *, args, num_metadata, category_num):
         super(TiSASRec, self).__init__()
 
-        self.user_num = user_num
         self.item_num = item_num
         self.dev = args.device
 
@@ -154,11 +151,16 @@ class TiSASRec(torch.nn.Module):
             new_fwd_layer = PointWiseFeedForward(args.hidden_size, args.dropout_rate)
             self.forward_layers.append(new_fwd_layer)
 
-    def seq2feats(self, user_ids, log_seqs, time_matrices):
-        seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
-        seqs *= self.item_emb.embedding_dim ** 0.5 # boost magnitude of item sequence embedding
-        seqs = self.item_emb_dropout(seqs)
+    def seq2vec(self, log_seqs, embed_only=False):
+        vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
 
+        if not embed_only:
+            vecs *= self.item_emb.embedding_dim ** 0.5 # boost magnitude of item sequence embedding
+            vecs = self.item_emb_dropout(vecs)
+
+        return vecs
+
+    def vec2feats(self, vecs, log_seqs, time_matrices):
         positions = np.tile(np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1])
         positions = torch.LongTensor(positions).to(self.dev)
         abs_pos_K = self.abs_pos_K_emb(positions)
@@ -174,21 +176,21 @@ class TiSASRec(torch.nn.Module):
 
         # mask padding items (0th item in vocabulary) in log_seqs
         timeline_mask = torch.BoolTensor(log_seqs == 0).to(self.dev)
-        seqs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
+        vecs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
 
-        tl = seqs.shape[1] # time dim len for enforce causality
+        tl = vecs.shape[1] # time dim len for enforce causality
         attention_mask = ~torch.tril(torch.ones((tl, tl), dtype=torch.bool, device=self.dev))
 
         for i in range(len(self.attention_layers)):
-            # Self-attention, Q=layernorm(seqs), K=V=seqs
+            # Self-attention, Q=layernorm(vecs), K=V=vecs
 
             # PyTorch mha requires time first format, need to transpose if using native mha
-            # seqs = torch.transpose(seqs, 0, 1) # (N, T, C) -> (T, N, C)
+            # vecs = torch.transpose(vecs, 0, 1) # (N, T, C) -> (T, N, C)
 
-            Q = self.attention_layernorms[i](seqs)
+            Q = self.attention_layernorms[i](vecs)
             mha_outputs = self.attention_layers[i](
                 Q,
-                seqs,
+                vecs,
                 timeline_mask,
                 attention_mask,
                 time_matrix_K,
@@ -196,51 +198,62 @@ class TiSASRec(torch.nn.Module):
                 abs_pos_K,
                 abs_pos_V,
             )
-            seqs = Q + mha_outputs
+            vecs = Q + mha_outputs
 
-            # seqs = torch.transpose(seqs, 0, 1) # (T, N, C) -> (N, T, C)
+            # vecs = torch.transpose(vecs, 0, 1) # (T, N, C) -> (N, T, C)
 
-            seqs = self.forward_layernorms[i](seqs)
-            seqs = self.forward_layers[i](seqs)
-            seqs *=  ~timeline_mask.unsqueeze(-1)
+            vecs = self.forward_layernorms[i](vecs)
+            vecs = self.forward_layers[i](vecs)
+            vecs *=  ~timeline_mask.unsqueeze(-1)
 
-        log_feats = self.last_layernorm(seqs)
+        log_feats = self.last_layernorm(vecs)
 
         return log_feats
 
-    def forward(self, user_ids, log_seqs, time_matrices, pos_seqs, neg_seqs): # for training
-        log_feats = self.seq2feats(user_ids, log_seqs, time_matrices)
+    def forward(self, log_seqs, time_matrices, pos_seqs, neg_seqs, metadata_seqs=None, category_seqs=None): # for training
+        log_vecs = self.seq2vec(log_seqs, metadata_seqs, category_seqs)
+        log_feats = self.vec2feats(log_vecs, log_seqs, time_matrices)
 
-        pos_embs = self.item_emb(torch.LongTensor(pos_seqs).to(self.dev))
-        neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
+        pos_embs = self.seq2vec(torch.LongTensor(pos_seqs).to(self.dev), embed_only=True)
+        neg_embs = self.seq2vec(torch.LongTensor(neg_seqs).to(self.dev), embed_only=True)
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
 
         return pos_logits, neg_logits
 
-    def predict(self, user_ids, log_seqs, time_matrices, item_indices): # for inference
-        log_feats = self.seq2feats(user_ids, log_seqs, time_matrices)
+    def predict(self, log_seqs, time_matrices, item_indices, metadata_seqs=None, category_seqs=None): # for inference
+        log_vecs = self.seq2vec(log_seqs, metadata_seqs, category_seqs)
+        log_feats = self.vec2feats(log_vecs, log_seqs, time_matrices)
 
         final_feat = log_feats[:, -1, :] # only use last QKV classifier
 
-        item_embs = self.item_emb(torch.LongTensor(item_indices).to(self.dev)) # (U, I, C)
+        item_embs = self.seq2vec(torch.LongTensor(item_indices).to(self.dev), embed_only=True) # (U, I, C)
 
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
         return logits # preds # (U, I)
 
 
-class TiSASRecWithMetadata(torch.nn.Module):
+class TiSASRecWithMetadata(TiSASRec):
     def __init__(self, *user_args, **kwargs):
-        super(TiSASRecWithMetadata, self).__init__()
+        super(TiSASRecWithMetadata, self).__init__(*user_args, **kwargs)
+        args = kwargs.get('args')
+        num_item_categories = kwargs.get('num_item_categories')
+        num_metadata = kwargs.get('num_metadata')
 
-        metadata = kwargs.get('metadata')
+        self.metadata_cat_emb = torch.nn.EmbeddingBag(num_item_categories, args.hidden_size // 2)
+        self.metadata_num_emb = torch.nn.Linear(num_metadata, args.hidden_size // 2)
+        self.metadata_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
+        self.metadata_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
+        self.norm = torch.nn.LayerNorm(args.hidden_size)
 
-        self.TiSASRec = TiSASRec(*user_args, **kwargs)
+    def seq2vec(self, log_seqs, embed_only=False):
+        vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
 
-    def forward(self, *user_args, **kwargs):
-        return self.TiSASRec.forward(*user_args, **kwargs)
+        if not embed_only:
+            vecs *= self.item_emb.embedding_dim ** 0.5 # boost magnitude of item sequence embedding
+            vecs = self.item_emb_dropout(vecs)
 
-    def predict(self, *user_args, **kwargs):
-        return self.TiSASRec.predict(*user_args, **kwargs)
+        return vecs
+

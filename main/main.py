@@ -4,9 +4,11 @@ import torch
 import pickle
 import argparse
 
-from model import TiSASRec
+from model import TiSASRec, TiSASRecWithMetadata
 from tqdm import tqdm
 from utils import *
+
+ENRICH_WITH_METADATA = False
 
 def str2bool(s):
     if s not in {'false', 'true'}:
@@ -19,7 +21,7 @@ parser.add_argument('--train_dir', required=True)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
 parser.add_argument('--maxlen', default=50, type=int)
-parser.add_argument('--hidden_size', default=50, type=int)
+parser.add_argument('--hidden_size', default=64, type=int)
 parser.add_argument('--num_blocks', default=2, type=int)
 parser.add_argument('--num_epochs', default=201, type=int)
 parser.add_argument('--num_heads', default=1, type=int)
@@ -38,7 +40,7 @@ with open(os.path.join(args.dataset + '_' + args.train_dir, 'args.txt'), 'w') as
 f.close()
 
 dataset = data_partition(args.dataset)
-[user_train, user_valid, user_test, usernum, itemnum, timenum] = dataset
+[user_train, user_valid, user_test, user_num, item_num, time_num] = dataset
 num_batch = len(user_train) // args.batch_size
 cc = 0.0
 for u in user_train:
@@ -50,11 +52,28 @@ f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
 try:
     relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.maxlen, args.time_span),'rb'))
 except:
-    relation_matrix = Relation(user_train, usernum, args.maxlen, args.time_span)
+    relation_matrix = Relation(user_train, user_num, args.maxlen, args.time_span)
     pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.maxlen, args.time_span),'wb'))
 
-sampler = WarpSampler(user_train, usernum, itemnum, relation_matrix, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=3)
-model = TiSASRec(usernum, itemnum, itemnum, args).to(args.device)
+sampler = DataSampler(
+    user_train,
+    user_num,
+    item_num,
+    relation_matrix,
+    batch_size=args.batch_size,
+    maxlen=args.maxlen,
+    n_workers=3,
+)
+
+#* num_metadata = 4
+#* app_price, app_average_score, app_num_reviews, review_rating
+model = TiSASRecWithMetadata(
+    item_num,
+    args=args,
+    num_metadata=4,
+    category_num=100,
+).to(args.device) if ENRICH_WITH_METADATA else \
+TiSASRec(item_num, args=args).to(args.device)
 
 for name, param in model.named_parameters():
     try:
@@ -92,13 +111,14 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
         u, seq, time_seq, time_matrix, pos, neg = sampler.next_batch() # tuples to ndarray
         u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
         time_seq, time_matrix = np.array(time_seq), np.array(time_matrix)
-        pos_logits, neg_logits = model(u, seq, time_matrix, pos, neg)
+
+        pos_logits, neg_logits = model(seq, time_matrix, pos, neg, metadata=None)
         pos_labels, neg_labels = torch.ones(pos_logits.shape, device=args.device), torch.zeros(neg_logits.shape, device=args.device)
 
         # print("\nsanity check raw_logits:"); print(pos_logits); print(neg_logits) # check pos_logits > 0, neg_logits < 0
 
         adam_optimizer.zero_grad()
-        indices = np.where(pos != 0) # skip padding items
+        indices = np.where(pos != 0) # mask padding items
 
         loss = bce_criterion(pos_logits[indices], pos_labels[indices])
         loss += bce_criterion(neg_logits[indices], neg_labels[indices])
@@ -115,7 +135,7 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
         adam_optimizer.step()
         print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
 
-    if epoch % 20 == 0:
+    if epoch % 10 == 0:
         model.eval()
         t1 = time.time() - t0
         T += t1

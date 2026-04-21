@@ -25,9 +25,9 @@ def computeRePos(time_seq, time_span):
                 time_matrix[i][j] = span
     return time_matrix
 
-def Relation(user_train, usernum, maxlen, time_span):
+def Relation(user_train, user_num, maxlen, time_span):
     data_train = dict()
-    for user in tqdm(range(1, usernum+1), desc='Preparing relation matrix'):
+    for user in tqdm(range(1, user_num+1), desc='Preparing relation matrix'):
         time_seq = np.zeros([maxlen], dtype=np.int32)
         idx = maxlen - 1
         for i in reversed(user_train[user][:-1]):
@@ -37,7 +37,7 @@ def Relation(user_train, usernum, maxlen, time_span):
         data_train[user] = computeRePos(time_seq, time_span)
     return data_train
 
-def sample_function(user_train, usernum, itemnum, batch_size, maxlen, relation_matrix, result_queue, SEED):
+def sample_function(user_train, user_num, item_num, batch_size, maxlen, relation_matrix, result_queue, SEED):
     def sample(user):
 
         seq = np.zeros([maxlen], dtype=np.int32)
@@ -52,7 +52,7 @@ def sample_function(user_train, usernum, itemnum, batch_size, maxlen, relation_m
             seq[idx] = i[0]
             time_seq[idx] = i[1]
             pos[idx] = nxt
-            if nxt != 0: neg[idx] = random_neq(1, itemnum + 1, ts)
+            if nxt != 0: neg[idx] = random_neq(1, item_num + 1, ts)
             nxt = i[0]
             idx -= 1
             if idx == -1: break
@@ -63,14 +63,14 @@ def sample_function(user_train, usernum, itemnum, batch_size, maxlen, relation_m
     while True:
         one_batch = []
         for i in range(batch_size):
-            user = np.random.randint(1, usernum + 1)
-            while len(user_train[user]) <= 1: user = np.random.randint(1, usernum + 1)
+            user = np.random.randint(1, user_num + 1)
+            while len(user_train[user]) <= 1: user = np.random.randint(1, user_num + 1)
             one_batch.append(sample(user))
 
         result_queue.put(zip(*one_batch))
 
-class WarpSampler(object):
-    def __init__(self, User, usernum, itemnum, relation_matrix, batch_size=64, maxlen=10,n_workers=1):
+class DataSampler(object):
+    def __init__(self, User, user_num, item_num, relation_matrix, batch_size=64, maxlen=10,n_workers=1):
         self.result_queue = Queue(maxsize=n_workers * 10)
         self.processors = []
         for i in range(n_workers):
@@ -79,8 +79,8 @@ class WarpSampler(object):
                     target=sample_function,
                     args=(
                         User,
-                        usernum,
-                        itemnum,
+                        user_num,
+                        item_num,
                         batch_size,
                         maxlen,
                         relation_matrix,
@@ -107,7 +107,7 @@ def timeSlice(time_set):
         time_map[time] = int(round(float(time-time_min)))
     return time_map
 
-def cleanAndsort(User, time_map):
+def cleanAndSort(User, time_map):
     User_filted = dict()
     user_set = set()
     item_set = set()
@@ -148,8 +148,8 @@ def cleanAndsort(User, time_map):
     return User_res, len(user_set), len(item_set), max(time_max)
 
 def data_partition(fname):
-    usernum = 0
-    itemnum = 0
+    user_num = 0
+    item_num = 0
     User = defaultdict(list)
     user_train = {}
     user_valid = {}
@@ -186,7 +186,7 @@ def data_partition(fname):
         User[u].append([i, timestamp])
     f.close()
     time_map = timeSlice(time_set)
-    User, usernum, itemnum, timenum = cleanAndsort(User, time_map)
+    User, user_num, item_num, time_num = cleanAndSort(User, time_map)
 
     for user in User:
         nfeedback = len(User[user])
@@ -201,20 +201,20 @@ def data_partition(fname):
             user_test[user] = []
             user_test[user].append(User[user][-1])
     print('Preparing done...')
-    return [user_train, user_valid, user_test, usernum, itemnum, timenum]
+    return [user_train, user_valid, user_test, user_num, item_num, time_num]
 
 
 def evaluate(model, dataset, args):
-    [train, valid, test, usernum, itemnum, timenum] = copy.deepcopy(dataset)
+    [train, valid, test, user_num, item_num, time_num] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     HT = 0.0
     valid_user = 0.0
 
-    if usernum>10000:
-        users = random.sample(range(1, usernum + 1), 10000)
+    if user_num>10000:
+        users = random.sample(range(1, user_num + 1), 10000)
     else:
-        users = range(1, usernum + 1)
+        users = range(1, user_num + 1)
     for u in users:
 
         if len(train[u]) < 1 or len(test[u]) < 1: continue
@@ -237,13 +237,13 @@ def evaluate(model, dataset, args):
         rated.add(0)
         item_idx = [test[u][0][0]]
         for _ in range(100):
-            t = np.random.randint(1, itemnum + 1)
-            while t in rated: t = np.random.randint(1, itemnum + 1)
+            t = np.random.randint(1, item_num + 1)
+            while t in rated: t = np.random.randint(1, item_num + 1)
             item_idx.append(t)
 
         time_matrix = computeRePos(time_seq, args.time_span)
 
-        predictions = -model.predict(*[np.array(l) for l in [[u], [seq], [time_matrix],item_idx]])
+        predictions = -model.predict(*[np.array(l) for l in [[seq], [time_matrix],item_idx]])
         predictions = predictions[0]
 
         rank = predictions.argsort().argsort()[0].item()
@@ -261,15 +261,15 @@ def evaluate(model, dataset, args):
 
 
 def evaluate_valid(model, dataset, args):
-    [train, valid, test, usernum, itemnum, timenum] = copy.deepcopy(dataset)
+    [train, valid, test, user_num, item_num, time_num] = copy.deepcopy(dataset)
 
     NDCG = 0.0
     valid_user = 0.0
     HT = 0.0
-    if usernum>10000:
-        users = random.sample(range(1, usernum + 1), 10000)
+    if user_num>10000:
+        users = random.sample(range(1, user_num + 1), 10000)
     else:
-        users = range(1, usernum + 1)
+        users = range(1, user_num + 1)
     for u in users:
         if len(train[u]) < 1 or len(valid[u]) < 1: continue
 
@@ -287,12 +287,12 @@ def evaluate_valid(model, dataset, args):
         rated.add(0)
         item_idx = [valid[u][0][0]]
         for _ in range(100):
-            t = np.random.randint(1, itemnum + 1)
-            while t in rated: t = np.random.randint(1, itemnum + 1)
+            t = np.random.randint(1, item_num + 1)
+            while t in rated: t = np.random.randint(1, item_num + 1)
             item_idx.append(t)
 
         time_matrix = computeRePos(time_seq, args.time_span)
-        predictions = -model.predict(*[np.array(l) for l in [[u], [seq], [time_matrix],item_idx]])
+        predictions = -model.predict(*[np.array(l) for l in [[seq], [time_matrix],item_idx]])
         predictions = predictions[0]
 
         rank = predictions.argsort().argsort()[0].item()
