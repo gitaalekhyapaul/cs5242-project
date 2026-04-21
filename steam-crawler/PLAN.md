@@ -44,7 +44,7 @@
 - Logs:
   `logs/run.log` for normal progress and `logs/errors.csv` for failures with `stage`, `appid`, `url`, `params_json`, `attempt`, `status_code`, `response_headers_json`, `response_body`, `exception_type`, `exception_message`, `retry_after_seconds`, `logged_at`.
 - EDA notebook env expectations:
-  `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN` must be present for notebook-side data tasks; the notebook maps `KAGGLE_API_TOKEN` to the Kaggle client's expected key env var internally.
+  `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN` must be present for notebook-side data tasks; the notebook validates those credentials for `kaggle` and `kagglehub` use and maps `KAGGLE_API_TOKEN` to the Kaggle client's expected key env var internally.
 
 ## Implementation
 - HTTP client:
@@ -66,12 +66,14 @@
 
 ## Notebook Behavior
 - `steam_crawler.ipynb` should have one runnable section per crawler stage plus one “run all missing stages” section. `run_notebook.py` should expose the same stage selection and smoke/full profile behavior for terminal execution.
-- `eda.ipynb` should mirror the project env-loading pattern, honor `STEAM_DATA_DIR`, ensure notebook dependencies are installed in the active kernel, and provide analysis / patch cells that operate on the staged outputs without changing the main pipeline.
+- `eda.ipynb` should mirror the project env-loading pattern, honor `STEAM_DATA_DIR`, ensure notebook dependencies are installed in the active kernel, validate the Kaggle credentials used by `kagglehub`, and provide analysis / patch cells that operate on the staged outputs without changing the main pipeline.
 - Every long loop must show a `tqdm.notebook` progress bar. Stage 2 uses total apps from Stage 1. Stage 5 uses selected-game count as the outer total and a per-game review counter as the inner total.
 - After each stage, print a compact summary in the notebook: rows written, elapsed time, retry count, error count, and output path.
 - If a stage input CSV already exists, the notebook should announce that it is reusing the cached output and skip recomputation unless explicitly overridden.
 - The Stage 4a cells in `eda.ipynb` should run as two explicit steps: first the resumable CSV patch, then a later parquet materialization cell that reads the completed CSV.
 - The Stage 5a cells in `eda.ipynb` should run after the Stage 4a section and follow the same two-step pattern: first build the gzipped CSV, then materialize parquet from the completed Stage 5a CSV.
+- `eda.ipynb` should place one optional Kaggle upload cell immediately after each Stage 4a and Stage 5a parquet materialization cell so the parquet artifacts can be published together into one shared Kaggle dataset, with each stage represented by a separate parquet file resource in that dataset.
+- `eda.ipynb` should end with a Kaggle sanity-check cell that downloads the shared dataset snapshot back from Kaggle, retries briefly while Kaggle processes the version, verifies both parquet resources exist, and previews the downloaded head / tail for each file.
 
 ## Current Follow-up Gap
 - Stage 2 still logs and skips `appdetails` requests that exhaust retries instead of emitting an explicit failed metadata row or failing the stage. The remaining fix is to choose one of those behaviors so Stage 3 cannot silently treat fetch exhaustion as absent metadata.

@@ -232,8 +232,8 @@ Endpoint selection is also environment-driven:
 - `STEAM_MAX_APPS=25`: optional Stage 2 and Stage 3 app cap
 - `STEAM_MAX_GAMES=2`: optional Stage 5 game cap
 - `STEAM_GAP_DELAY=300`: optional `429` cooling-off gap in seconds
-- `KAGGLE_USERNAME`: required by `notebooks/eda.ipynb` when using Kaggle-backed notebook workflows
-- `KAGGLE_API_TOKEN`: required by `notebooks/eda.ipynb`; the notebook maps it to the Kaggle client's expected key env var internally
+- `KAGGLE_USERNAME`: required by `notebooks/eda.ipynb` when using Kaggle-backed notebook workflows and when setting the shared Kaggle dataset handle for notebook uploads
+- `KAGGLE_API_TOKEN`: required by `notebooks/eda.ipynb`; the notebook validates it for `kaggle` and `kagglehub` use and maps it to the Kaggle client's expected key env var internally
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. The CLI flag overrides `STEAM_ENDPOINT_MODE` from the environment or `.env`.
 Both terminal entrypoints also accept `--max-pages <count>` to override `STEAM_MAX_PAGES` from the environment or `.env`.
@@ -308,9 +308,12 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 - env and dependency checks for notebook execution
 - a Stage 4a CSV patch cell
 - a separate Stage 4a parquet materialization cell
+- a Stage 4a parquet upload cell that pushes the current parquet snapshot into one shared Kaggle dataset through `kagglehub`
 - Stage 5 review dataset inspection from the configured data directory
 - a Stage 5a gzipped CSV transform cell
 - a separate Stage 5a parquet materialization cell
+- a Stage 5a parquet upload cell that pushes the current parquet snapshot into the same shared Kaggle dataset through `kagglehub`
+- a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies both parquet resources exist, and shows the downloaded head / tail previews
 
 Stage 4a is sample-only and resumable:
 
@@ -342,8 +345,11 @@ Run order in the notebook:
 
 1. Execute the Stage 4a CSV cell until `stage_04a_selected_games.csv` reaches the same row count as `stage_04_selected_games.csv`.
 2. Execute the next parquet cell to write `stage_04a_selected_games.parquet` from the completed CSV.
-3. Execute the Stage 5a CSV cell to derive `stage_05a_reviews_dataset.csv.gz` from `stage_05_reviews_dataset.csv.gz`.
-4. Execute the next Stage 5a parquet cell to write `stage_05a_reviews_dataset.parquet` from the completed Stage 5a gzipped CSV.
+3. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the next cell, then run the upload cell to publish the current parquet snapshot into one Kaggle dataset. `stage_04a_selected_games.parquet` and `stage_05a_reviews_dataset.parquet` are kept as separate tabular files inside that dataset when present.
+4. Execute the Stage 5a CSV cell to derive `stage_05a_reviews_dataset.csv.gz` from `stage_05_reviews_dataset.csv.gz`.
+5. Execute the next Stage 5a parquet cell to write `stage_05a_reviews_dataset.parquet` from the completed Stage 5a gzipped CSV.
+6. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the next cell, then run the upload cell to publish both stage parquet files into the same Kaggle dataset.
+7. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that `selected-games.parquet` and `reviews-dataset.parquet` are present, and inspect the downloaded head / tail for both files.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
