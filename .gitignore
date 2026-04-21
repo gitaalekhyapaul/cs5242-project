@@ -183,3 +183,4 @@ outputs/
 
 # Project-specific large/generated artifacts
 steam-crawler/data/*.parquet
+processed/
