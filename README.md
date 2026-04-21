@@ -21,6 +21,18 @@ Useful references:
 - SASRec paper/code: https://github.com/kang205/SASRec
 - PyTorch SASRec reproduction: https://github.com/pmixer/SASRec.pytorch
 - MobileRec dataset: https://huggingface.co/datasets/recmeapp/mobilerec
+- Processed MobileRec dataset: [gitaalekhyapaul/cs5242-mobilerec-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/cs5242-mobilerec-dataset)
+- Processed Steam dataset: [gitaalekhyapaul/steam-cs5242-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/steam-cs5242-dataset)
+
+## Published Datasets
+
+This repo currently exposes two processed datasets that are ready to consume from Kaggle:
+
+- MobileRec sequential recommendation artifacts: [gitaalekhyapaul/cs5242-mobilerec-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/cs5242-mobilerec-dataset)
+- Steam processed stage artifacts: [gitaalekhyapaul/steam-cs5242-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/steam-cs5242-dataset)
+
+The MobileRec dataset is the main input for the SASRec baseline in this root project.
+The Steam dataset is produced by the stage-based crawler under [`steam-crawler/`](./steam-crawler/PLAN.md) and is meant for the Steam-specific data collection and downstream analysis workflow.
 
 ## Repository Layout
 
@@ -46,7 +58,20 @@ Useful references:
 
 Notes:
 - `notebooks/CS5242_Project.ipynb` is kept as existing exploratory work.
-- `steam-crawler/` is unrelated to the MobileRec baseline workflow and is not part of the new root project.
+- `steam-crawler/` is the stage-based Steam data pipeline used to build the published Steam processed dataset. The full operator runbook lives in [steam-crawler/README.md](./steam-crawler/README.md).
+
+## Steam Crawler Reference
+
+The root project is centered on MobileRec preparation and SASRec training, but the repo also contains a separate Steam ingestion workflow in [`steam-crawler/`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler).
+
+That crawler covers:
+
+- staged Steam API collection with resumable CSV checkpoints
+- optional Stage 4a and Stage 5a transforms for downstream analytics
+- notebook and terminal operator surfaces
+- publication of the processed Steam parquet snapshots to Kaggle
+
+For the full crawler contract, environment setup, stage layout, and notebook/CLI usage, read [steam-crawler/README.md](./steam-crawler/README.md).
 
 ## Environment
 
