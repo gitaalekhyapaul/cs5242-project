@@ -1,6 +1,7 @@
 from datasets import load_dataset
 import numpy as np
 import torch
+import math
 
 # TiSASRec architecture implementation
 
@@ -77,7 +78,7 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         attn_weights += time_matrix_K_.matmul(Q_.unsqueeze(-1)).squeeze(-1)
 
         # seq length adaptive scaling, penalize longer sequences
-        attn_weights = attn_weights / (K_.shape[-1] ** 0.5)
+        attn_weights = attn_weights / math.sqrt(K_.shape[-1])
 
         # reshape attention and time masks
         #! less memory efficient, use expand instead of repeat for head dimension as well
@@ -155,7 +156,7 @@ class TiSASRec(torch.nn.Module):
         vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
 
         if not embed_only:
-            vecs *= self.item_emb.embedding_dim ** 0.5 # boost magnitude of item sequence embedding
+            vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
             vecs = self.item_emb_dropout(vecs)
 
         return vecs
@@ -214,8 +215,8 @@ class TiSASRec(torch.nn.Module):
         log_vecs = self.seq2vec(log_seqs, metadata_seqs, category_seqs)
         log_feats = self.vec2feats(log_vecs, log_seqs, time_matrices)
 
-        pos_embs = self.seq2vec(torch.LongTensor(pos_seqs).to(self.dev), embed_only=True)
-        neg_embs = self.seq2vec(torch.LongTensor(neg_seqs).to(self.dev), embed_only=True)
+        pos_embs = self.seq2vec(torch.LongTensor(pos_seqs).to(self.dev), metadata_seqs, category_seqs, embed_only=True)
+        neg_embs = self.seq2vec(torch.LongTensor(neg_seqs).to(self.dev), metadata_seqs, category_seqs, embed_only=True)
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
@@ -228,7 +229,7 @@ class TiSASRec(torch.nn.Module):
 
         final_feat = log_feats[:, -1, :] # only use last QKV classifier
 
-        item_embs = self.seq2vec(torch.LongTensor(item_indices).to(self.dev), embed_only=True) # (U, I, C)
+        item_embs = self.seq2vec(torch.LongTensor(item_indices).to(self.dev), metadata_seqs, category_seqs, embed_only=True) # (U, I, C)
 
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
@@ -244,16 +245,28 @@ class TiSASRecWithMetadata(TiSASRec):
 
         self.metadata_cat_emb = torch.nn.EmbeddingBag(num_item_categories, args.hidden_size // 2)
         self.metadata_num_emb = torch.nn.Linear(num_metadata, args.hidden_size // 2)
-        self.metadata_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
-        self.metadata_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
-        self.norm = torch.nn.LayerNorm(args.hidden_size)
+        self.fusion = torch.nn.Linear(args.hidden_size + 2 * (args.hidden_size // 2), args.hidden_size)
+        self.emb_layernorm = torch.nn.LayerNorm(args.hidden_size)
 
-    def seq2vec(self, log_seqs, embed_only=False):
-        vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
+    def seq2vec(self, log_seqs, metadata_seqs, category_seqs, embed_only=False):
+        item_vecs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
+        metadata_cat_vecs = self.metadata_cat_emb(category_seqs)
+        metadata_num_vecs = self.metadata_num_emb(metadata_seqs)
+
+        item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
+
+        combined = torch.cat([
+            item_vecs,
+            metadata_num_vecs,
+            metadata_cat_vecs,
+        ], dim=-1)
+
+        vecs = self.fusion(combined)
 
         if not embed_only:
-            vecs *= self.item_emb.embedding_dim ** 0.5 # boost magnitude of item sequence embedding
             vecs = self.item_emb_dropout(vecs)
+
+        vecs = self.emb_layernorm(vecs)
 
         return vecs
 

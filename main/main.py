@@ -4,10 +4,12 @@ import torch
 import pickle
 import argparse
 
-from model import TiSASRec, TiSASRecWithMetadata
+from models.tisasrec import TiSASRec, TiSASRecWithMetadata
+from models.sasrec import SASRec
 from tqdm import tqdm
 from utils import *
 
+USE_BASELINE_MODEL = False
 ENRICH_WITH_METADATA = False
 
 def str2bool(s):
@@ -67,12 +69,15 @@ sampler = DataSampler(
 
 #* num_metadata = 4
 #* app_price, app_average_score, app_num_reviews, review_rating
-model = TiSASRecWithMetadata(
+model = SASRec if USE_BASELINE_MODEL else \
+\
+TiSASRecWithMetadata(
     item_num,
     args=args,
     num_metadata=4,
     category_num=100,
 ).to(args.device) if ENRICH_WITH_METADATA else \
+\
 TiSASRec(item_num, args=args).to(args.device)
 
 for name, param in model.named_parameters():
@@ -107,6 +112,8 @@ t0 = time.time()
 
 for epoch in range(epoch_start_idx, args.num_epochs + 1):
     if args.inference_only: break # skip training if in inference mode
+
+    epoch_losses = []
     for step in range(num_batch): # tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
         u, seq, time_seq, time_matrix, pos, neg = sampler.next_batch() # tuples to ndarray
         u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
@@ -133,22 +140,23 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
 
         loss.backward()
         adam_optimizer.step()
+        epoch_losses.append(loss.detach().cpu().item())
+
         print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
 
-    if epoch % 10 == 0:
-        model.eval()
-        t1 = time.time() - t0
-        T += t1
-        print('Evaluating', end='')
-        t_test = evaluate(model, dataset, args)
-        t_valid = evaluate_valid(model, dataset, args)
-        print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
-                % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
+    #* run validation
+    model.eval()
+    t1 = time.time() - t0
+    T += t1
+    print('\nEvaluating', end='')
+    t_valid = evaluate_valid(model, dataset, args)
+    print('epoch:%d, time: %f(s), average training loss: %f, valid (NDCG@10: %.4f, HR@10: %.4f)'
+        % (epoch, T, float(np.mean(epoch_losses)), t_valid[0], t_valid[1]))
 
-        f.write(str(t_valid) + ' ' + str(t_test) + '\n')
-        f.flush()
-        t0 = time.time()
-        model.train()
+    # f.write(str(t_valid) + ' ' + str(t_test) + '\n')
+    # f.flush()
+    t0 = time.time()
+    model.train()
 
     # save model after each epoch
     print('\nsaving model...\n')
