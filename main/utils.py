@@ -75,15 +75,20 @@ class WarpSampler(object):
         self.processors = []
         for i in range(n_workers):
             self.processors.append(
-                Process(target=sample_function, args=(User,
-                                                      usernum,
-                                                      itemnum,
-                                                      batch_size,
-                                                      maxlen,
-                                                      relation_matrix,
-                                                      self.result_queue,
-                                                      np.random.randint(2e9)
-                                                      )))
+                Process(
+                    target=sample_function,
+                    args=(
+                        User,
+                        usernum,
+                        itemnum,
+                        batch_size,
+                        maxlen,
+                        relation_matrix,
+                        self.result_queue,
+                        np.random.randint(2e9)
+                    ),
+                ),
+            )
             self.processors[-1].daemon = True
             self.processors[-1].start()
 

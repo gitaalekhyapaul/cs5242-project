@@ -6,38 +6,42 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
 # TiSASRec architecture implementation
 
-class PointWiseFeedForwardAlternate(torch.nn.Module):
-    def __init__(self, hidden_units, dropout_rate):
 
-        super(PointWiseFeedForwardAlternate, self).__init__()
+class PointWiseFeedForward(torch.nn.Module):
+    def __init__(self, hidden_size, dropout_rate):
 
-        self.conv1 = torch.nn.Conv1d(hidden_units, hidden_units, kernel_size=1)
+        super(PointWiseFeedForward, self).__init__()
+
+        self.w_1 = torch.nn.Linear(hidden_size, hidden_size)
+        self.w_2 = torch.nn.Linear(hidden_size, hidden_size)
         self.dropout1 = torch.nn.Dropout(p=dropout_rate)
-        self.relu = torch.nn.ReLU()
-        self.conv2 = torch.nn.Conv1d(hidden_units, hidden_units, kernel_size=1)
+        self.gelu = torch.nn.GELU()
         self.dropout2 = torch.nn.Dropout(p=dropout_rate)
 
     def forward(self, inputs):
-        outputs = self.dropout2(self.conv2(self.relu(self.dropout1(self.conv1(inputs.transpose(-1, -2))))))
+        outputs = self.w_2(self.dropout1(self.gelu(self.w_1(inputs))))
+        outputs = inputs + self.dropout2(outputs) # residual connection
+        return outputs
+
+
+# Point-wise Feed-forward, actually 2 Conv1D for channel wise fusion
+class PointWiseFeedForwardAlternate(torch.nn.Module):
+    def __init__(self, hidden_size, dropout_rate):
+
+        super(PointWiseFeedForwardAlternate, self).__init__()
+
+        self.conv1 = torch.nn.Conv1d(hidden_size, hidden_size, kernel_size=1)
+        self.dropout1 = torch.nn.Dropout(p=dropout_rate)
+        self.gelu = torch.nn.GELU()
+        self.conv2 = torch.nn.Conv1d(hidden_size, hidden_size, kernel_size=1)
+        self.dropout2 = torch.nn.Dropout(p=dropout_rate)
+
+    def forward(self, inputs):
+        outputs = self.dropout2(self.conv2(self.gelu(self.dropout1(self.conv1(inputs.transpose(-1, -2))))))
         outputs = outputs.transpose(-1, -2) # as Conv1D requires (N, C, Length)
         outputs += inputs # residual connection
         return outputs
 
-class PointWiseFeedForward(torch.nn.Module):
-    def __init__(self, hidden_units, dropout_rate):
-
-        super(PointWiseFeedForward, self).__init__()
-
-        self.w_1 = torch.nn.Linear(hidden_units, hidden_units)
-        self.w_2 = torch.nn.Linear(hidden_units, hidden_units)
-        self.dropout1 = torch.nn.Dropout(p=dropout_rate)
-        self.relu = torch.nn.ReLU()
-        self.dropout2 = torch.nn.Dropout(p=dropout_rate)
-
-    def forward(self, inputs):
-        outputs = self.w_2(self.dropout1(self.relu(self.w_1(inputs))))
-        outputs = inputs + self.dropout2(outputs) # residual connection
-        return outputs
 
 class TimeAwareMultiHeadAttention(torch.nn.Module):
     def __init__(self, hidden_size, head_num, dropout_rate, dev):
@@ -69,6 +73,7 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         abs_pos_V_ = torch.cat(torch.split(abs_pos_V, self.head_size, dim=2), dim=0)
 
         # batched channel wise matmul to gen attention weights
+        # Attention = softmax(Q x K.T/sqrt(d)) x V
         attn_weights = Q_.matmul(torch.transpose(K_, 1, 2))
         attn_weights += Q_.matmul(torch.transpose(abs_pos_K_, 1, 2))
         attn_weights += time_matrix_K_.matmul(Q_.unsqueeze(-1)).squeeze(-1)
@@ -76,18 +81,20 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         # seq length adaptive scaling, penalize longer sequences
         attn_weights = attn_weights / (K_.shape[-1] ** 0.5)
 
-        # key masking, -2^32 lead to leaking, inf lead to nan
-        # 0 * inf = nan, then reduce_sum([nan,...]) = nan
-
         # reshape attention and time masks
-        time_mask = time_mask.unsqueeze(-1).repeat(self.head_num, 1, 1)
-        time_mask = time_mask.expand(-1, -1, attn_weights.shape[-1])
+        #! less memory efficient, use expand instead of repeat for head dimension as well
+        # time_mask = time_mask.unsqueeze(-1).repeat(self.head_num, 1, 1)
+        # time_mask = time_mask.expand(-1, -1, attn_weights.shape[-1])
+
+        time_mask = time_mask.unsqueeze(-1).expand(self.head_num, -1, attn_weights.shape[-1])
         attn_mask = attn_mask.unsqueeze(0).expand(attn_weights.shape[0], -1, -1)
 
         paddings = torch.ones(attn_weights.shape) * (-2**32+1) # -1e23 # float('-inf')
         paddings = paddings.to(self.dev)
-        attn_weights = torch.where(time_mask, paddings, attn_weights) # True:pick padding
-        attn_weights = torch.where(attn_mask, paddings, attn_weights) # enforcing causality
+
+        # replace with padding element if masked
+        attn_weights = torch.where(time_mask, paddings, attn_weights)
+        attn_weights = torch.where(attn_mask, paddings, attn_weights) # enforces causality
 
         attn_weights = self.softmax(attn_weights)
         attn_weights = self.dropout(attn_weights)
@@ -102,7 +109,7 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         return outputs
 
 
-class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
+class TiSASRec(torch.nn.Module):
     def __init__(self, user_num, item_num, time_num, args):
         super(TiSASRec, self).__init__()
 
@@ -110,13 +117,11 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
         self.item_num = item_num
         self.dev = args.device
 
-        self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_units, padding_idx=0)
-        self.item_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
-
-        self.abs_pos_K_emb = torch.nn.Embedding(args.maxlen, args.hidden_units)
-        self.abs_pos_V_emb = torch.nn.Embedding(args.maxlen, args.hidden_units)
-        self.time_matrix_K_emb = torch.nn.Embedding(args.time_span+1, args.hidden_units)
-        self.time_matrix_V_emb = torch.nn.Embedding(args.time_span+1, args.hidden_units)
+        self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_size, padding_idx=0)
+        self.abs_pos_K_emb = torch.nn.Embedding(args.maxlen, args.hidden_size)
+        self.abs_pos_V_emb = torch.nn.Embedding(args.maxlen, args.hidden_size)
+        self.time_matrix_K_emb = torch.nn.Embedding(args.time_span+1, args.hidden_size)
+        self.time_matrix_V_emb = torch.nn.Embedding(args.time_span+1, args.hidden_size)
 
         self.item_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
         self.abs_pos_K_emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
@@ -129,24 +134,24 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
         self.forward_layernorms = torch.nn.ModuleList()
         self.forward_layers = torch.nn.ModuleList()
 
-        self.last_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
+        self.last_layernorm = torch.nn.LayerNorm(args.hidden_size, eps=1e-8)
 
         for _ in range(args.num_blocks):
-            new_attn_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
+            new_attn_layernorm = torch.nn.LayerNorm(args.hidden_size, eps=1e-8)
             self.attention_layernorms.append(new_attn_layernorm)
 
             new_attn_layer = TimeAwareMultiHeadAttention(
-                args.hidden_units,
+                args.hidden_size,
                 args.num_heads,
                 args.dropout_rate,
                 args.device,
             )
             self.attention_layers.append(new_attn_layer)
 
-            new_fwd_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
+            new_fwd_layernorm = torch.nn.LayerNorm(args.hidden_size, eps=1e-8)
             self.forward_layernorms.append(new_fwd_layernorm)
 
-            new_fwd_layer = PointWiseFeedForward(args.hidden_units, args.dropout_rate)
+            new_fwd_layer = PointWiseFeedForward(args.hidden_size, args.dropout_rate)
             self.forward_layers.append(new_fwd_layer)
 
     def seq2feats(self, user_ids, log_seqs, time_matrices):
@@ -167,8 +172,7 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
         time_matrix_K = self.time_matrix_K_dropout(time_matrix_K)
         time_matrix_V = self.time_matrix_V_dropout(time_matrix_V)
 
-        # mask 0th items(placeholder for dry-run) in log_seqs
-        # would be easier if 0th item could be an exception for training
+        # mask padding items (0th item in vocabulary) in log_seqs
         timeline_mask = torch.BoolTensor(log_seqs == 0).to(self.dev)
         seqs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
 
@@ -177,8 +181,11 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
 
         for i in range(len(self.attention_layers)):
             # Self-attention, Q=layernorm(seqs), K=V=seqs
+
+            # PyTorch mha requires time first format, need to transpose if using native mha
             # seqs = torch.transpose(seqs, 0, 1) # (N, T, C) -> (T, N, C)
-            Q = self.attention_layernorms[i](seqs) # PyTorch mha requires time first fmt
+
+            Q = self.attention_layernorms[i](seqs)
             mha_outputs = self.attention_layers[i](
                 Q,
                 seqs,
@@ -190,9 +197,9 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
                 abs_pos_V,
             )
             seqs = Q + mha_outputs
+
             # seqs = torch.transpose(seqs, 0, 1) # (T, N, C) -> (N, T, C)
 
-            # Point-wise Feed-forward, actually 2 Conv1D for channel wise fusion
             seqs = self.forward_layernorms[i](seqs)
             seqs = self.forward_layers[i](seqs)
             seqs *=  ~timeline_mask.unsqueeze(-1)
@@ -215,10 +222,25 @@ class TiSASRec(torch.nn.Module): # similar to torch.nn.MultiheadAttention
     def predict(self, user_ids, log_seqs, time_matrices, item_indices): # for inference
         log_feats = self.seq2feats(user_ids, log_seqs, time_matrices)
 
-        final_feat = log_feats[:, -1, :] # only use last QKV classifier, a waste
+        final_feat = log_feats[:, -1, :] # only use last QKV classifier
 
         item_embs = self.item_emb(torch.LongTensor(item_indices).to(self.dev)) # (U, I, C)
 
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
         return logits # preds # (U, I)
+
+
+class TiSASRecWithMetadata(torch.nn.Module):
+    def __init__(self, *user_args, **kwargs):
+        super(TiSASRecWithMetadata, self).__init__()
+
+        metadata = kwargs.get('metadata')
+
+        self.TiSASRec = TiSASRec(*user_args, **kwargs)
+
+    def forward(self, *user_args, **kwargs):
+        return self.TiSASRec.forward(*user_args, **kwargs)
+
+    def predict(self, *user_args, **kwargs):
+        return self.TiSASRec.predict(*user_args, **kwargs)

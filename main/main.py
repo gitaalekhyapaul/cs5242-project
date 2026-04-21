@@ -19,7 +19,7 @@ parser.add_argument('--train_dir', required=True)
 parser.add_argument('--batch_size', default=128, type=int)
 parser.add_argument('--lr', default=0.001, type=float)
 parser.add_argument('--maxlen', default=50, type=int)
-parser.add_argument('--hidden_units', default=50, type=int)
+parser.add_argument('--hidden_size', default=50, type=int)
 parser.add_argument('--num_blocks', default=2, type=int)
 parser.add_argument('--num_epochs', default=201, type=int)
 parser.add_argument('--num_heads', default=1, type=int)
@@ -94,9 +94,12 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
         time_seq, time_matrix = np.array(time_seq), np.array(time_matrix)
         pos_logits, neg_logits = model(u, seq, time_matrix, pos, neg)
         pos_labels, neg_labels = torch.ones(pos_logits.shape, device=args.device), torch.zeros(neg_logits.shape, device=args.device)
+
         # print("\nsanity check raw_logits:"); print(pos_logits); print(neg_logits) # check pos_logits > 0, neg_logits < 0
+
         adam_optimizer.zero_grad()
-        indices = np.where(pos != 0)
+        indices = np.where(pos != 0) # skip padding items
+
         loss = bce_criterion(pos_logits[indices], pos_labels[indices])
         loss += bce_criterion(neg_logits[indices], neg_labels[indices])
 
@@ -131,7 +134,7 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
     print('\nsaving model...\n')
     folder = args.dataset + '_' + args.train_dir
     fname = 'TiSASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
-    fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
+    fname = fname.format(epoch, args.lr, args.num_blocks, args.num_heads, args.hidden_size, args.maxlen)
     torch.save(model.state_dict(), os.path.join(folder, fname))
     print('\nmodel saved!\n')
 
