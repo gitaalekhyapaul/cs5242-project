@@ -100,7 +100,8 @@ def build_sequences_from_interactions(interactions: pd.DataFrame) -> pd.DataFram
         item_ids = frame["item_id"].astype(int).tolist()
         timestamps = frame["timestamp"].astype(int).tolist()
         app_packages = frame["app_package"].astype(str).tolist()
-        ratings = frame["rating"].tolist()
+        ratings = frame["rating"].astype(float).tolist()
+        votes = frame["votes"].astype(int).tolist()
         rows.append(
             {
                 "user_id": int(user_id),
@@ -113,6 +114,7 @@ def build_sequences_from_interactions(interactions: pd.DataFrame) -> pd.DataFram
                 "timestamps": timestamps,
                 "app_packages": app_packages,
                 "ratings": ratings,
+                "votes": votes,
             }
         )
     return pd.DataFrame(rows)
@@ -196,6 +198,7 @@ def main() -> None:
               app_package,
               app_category,
               TRY_CAST(rating AS DOUBLE) AS rating,
+              COALESCE(TRY_CAST(votes AS BIGINT), 0) AS votes,
               COALESCE(
                 TRY_CAST(unix_timestamp AS BIGINT),
                 CAST(epoch(TRY_CAST(formated_date AS TIMESTAMP)) AS BIGINT)
@@ -264,6 +267,7 @@ def main() -> None:
               c.app_package,
               c.app_category,
               c.rating,
+              c.votes,
               c.timestamp,
               ROW_NUMBER() OVER (
                 PARTITION BY u.user_id
@@ -284,6 +288,7 @@ def main() -> None:
                 app_package,
                 app_category,
                 rating,
+                votes,
                 timestamp,
                 position
               FROM encoded_interactions
