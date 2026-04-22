@@ -399,8 +399,8 @@ The SteamRec sequences ETL section then reshapes `steamrec_interactions` into on
 - setting `validation_sequence` to all but the last item
 - setting `validation_target` to the second-last item when present
 - setting `test_target` to the last item when present
-- attaching aligned arrays for `timestamps`, `ratings`, `review_upvotes`, `app_category`, `app_num_reviews`, and `app_price`
-- mapping `app_num_reviews` and `app_price` from the original app ids in `steamrec_app_metadata` through `steamrec_item_mapping`, while keeping the final sequence columns on mapped SteamRec item ids
+- attaching aligned arrays for `timestamps`, `ratings`, `review_upvotes`, `app_category`, `app_num_reviews`, `app_avg_rating`, and `app_price`
+- mapping `app_num_reviews`, `app_avg_rating`, and `app_price` from the original app ids in `steamrec_app_metadata` through `steamrec_item_mapping`, while keeping the final sequence columns on mapped SteamRec item ids
 - writing both `data/steamrec_sequences.parquet` and `data/steamrec_sequences.csv`
 
 If the local parquet stack cannot decode `raw_selected_games.parquet` or `raw_reviews_dataset.parquet`, the notebook falls back to `stage_04a_selected_games.csv` or `stage_05a_reviews_dataset.csv.gz` for the downstream ETL and diagnostics cells.
@@ -418,7 +418,7 @@ Run order in the notebook:
 9. Execute the SteamRec interactions ETL cell to write `steamrec_interactions.parquet` and `steamrec_interactions.csv` from `user_review_positions_df`.
 10. Execute the SteamRec sequences ETL cell to write `steamrec_sequences.parquet` and `steamrec_sequences.csv` from `steamrec_interactions`.
 11. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet` and `steamrec_sequences.parquet`.
-12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode.
+12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode. The verification cell now retries with exponential backoff from a 10-second base for up to 10 retries, capped at 300 seconds per wait, to tolerate Kaggle processing delays after upload.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
