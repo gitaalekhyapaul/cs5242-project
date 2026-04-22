@@ -8,7 +8,7 @@ This folder contains a stage-based Steam crawler designed for two modes of opera
 The implementation is intentionally split between reusable Python classes in `src/steam_crawler` and a small set of operator surfaces:
 
 - the submission notebook at `notebooks/steam_crawler.ipynb`
-- the analysis / patch notebook at `notebooks/eda.ipynb`
+- the analysis / ETL notebook at `notebooks/eda_etl.ipynb`
 - the notebook-equivalent runner at `run_notebook.py`
 
 ## Status Against PLAN.md
@@ -52,8 +52,8 @@ Stage 2 now checkpoints after every successful appdetails response, and Stage 5 
 3. Stage 3 merges the catalog and metadata into `data/stage_03_apps_with_metadata.csv.gz`.
 4. Stage 4 samples eligible games into `data/stage_04_selected_games.csv`.
 5. Stage 5 fetches reviews for the sampled games from the configured reviews base into `data/stage_05_reviews_dataset.csv.gz`.
-6. Optional Stage 4a patch enriches the sampled Stage 4 games into `data/stage_04a_selected_games.csv`, then materializes `data/stage_04a_selected_games.parquet` from the completed CSV.
-7. Optional Stage 5a transform derives `data/stage_05a_reviews_dataset.csv.gz`, then materializes `data/stage_05a_reviews_dataset.parquet` from that gzipped CSV.
+6. Optional Stage 4a patch enriches the sampled Stage 4 games into `data/stage_04a_selected_games.csv`, then materializes `data/raw_selected_games.parquet` from the completed CSV.
+7. Optional Stage 5a transform derives `data/stage_05a_reviews_dataset.csv.gz`, then materializes `data/raw_reviews_dataset.parquet` from that gzipped CSV.
 
 Implementation note: Stage 2 uses the `basic,categories,recommendations` filter set because Steam omits the `type` field if `basic` is not included, and `type == "game"` is required for Stage 4 eligibility.
 That means `price_overview` is not present in the cached Stage 2 and Stage 3 payloads. Stage 4a exists specifically to recover price and review-summary fields for the sampled games without rerunning the entire crawler.
@@ -131,7 +131,7 @@ The package is intentionally split by responsibility instead of putting all craw
 - [`stage5a.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/src/steam_crawler/stage5a.py): Stage 5a streaming transform from the Stage 5 review dataset into a narrow review table
 - [`run_notebook.py`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/run_notebook.py): notebook-equivalent terminal runner with the same smoke/full profiles and preflight checks
 - [`steam_crawler.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/steam_crawler.ipynb): submission notebook for smoke validation and full cluster execution
-- [`eda.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda.ipynb): generic EDA notebook for Stage 4 sample inspection and Stage 4a patch / parquet materialization
+- [`eda_etl.ipynb`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/notebooks/eda_etl.ipynb): generic EDA + ETL notebook for Stage 4 sample inspection, Stage 4a / Stage 5a transforms, downstream SteamRec artifacts, and Kaggle publishing
 
 ### Retry and error handling
 
@@ -164,7 +164,7 @@ steam-crawler/
 ├── pyproject.toml
 ├── run_notebook.py
 ├── notebooks/
-│   ├── eda.ipynb
+│   ├── eda_etl.ipynb
 │   └── steam_crawler.ipynb
 ├── src/steam_crawler/
 │   ├── __init__.py
@@ -232,8 +232,8 @@ Endpoint selection is also environment-driven:
 - `STEAM_MAX_APPS=25`: optional Stage 2 and Stage 3 app cap
 - `STEAM_MAX_GAMES=2`: optional Stage 5 game cap
 - `STEAM_GAP_DELAY=300`: optional `429` cooling-off gap in seconds
-- `KAGGLE_USERNAME`: required by `notebooks/eda.ipynb` when using Kaggle-backed notebook workflows and when setting the shared Kaggle dataset handle for notebook uploads
-- `KAGGLE_API_TOKEN`: required by `notebooks/eda.ipynb`; the notebook validates it for `kaggle` and `kagglehub` use and maps it to the Kaggle client's expected key env var internally
+- `KAGGLE_USERNAME`: required by `notebooks/eda_etl.ipynb` when using Kaggle-backed notebook workflows and when setting the shared Kaggle dataset handle for notebook uploads
+- `KAGGLE_API_TOKEN`: required by `notebooks/eda_etl.ipynb`; the notebook validates it for `kaggle` and `kagglehub` use and maps it to the Kaggle client's expected key env var internally
 
 For terminal runs, both entrypoints also accept `--endpoint-mode proxy` or `--endpoint-mode direct`. The CLI flag overrides `STEAM_ENDPOINT_MODE` from the environment or `.env`.
 Both terminal entrypoints also accept `--max-pages <count>` to override `STEAM_MAX_PAGES` from the environment or `.env`.
@@ -300,9 +300,9 @@ The EDA notebook uses the same env-loading flow as the crawler notebook:
 
 This keeps exploratory work and patch jobs pointed at the same staged data location as the main crawler.
 
-## EDA notebook and Stage 4a patch
+## EDA + ETL notebook
 
-`notebooks/eda.ipynb` is intentionally generic so later EDA and ETL work can live in one place. The current sections cover:
+`notebooks/eda_etl.ipynb` is intentionally generic so later EDA and ETL work can live in one place. The current sections cover:
 
 - Stage 4 sample inspection from the configured data directory
 - env and dependency checks for notebook execution
@@ -312,14 +312,18 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 - Stage 5 review dataset inspection from the configured data directory
 - a Stage 5a gzipped CSV transform cell
 - a separate Stage 5a parquet materialization cell
-- a Stage 5a parquet upload cell that pushes the current parquet snapshot into the same shared Kaggle dataset through `kagglehub`
-- a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies both parquet resources exist, and shows the downloaded head / tail previews
+- a SteamRec app metadata ETL cell that writes `steamrec_app_metadata.parquet` and `steamrec_app_metadata.csv`
+- a mapping-tables cell that writes `steamrec_app_category_mapping.parquet`, `steamrec_app_category_mapping.csv`, `steamrec_item_mapping.parquet`, and `steamrec_item_mapping.csv`
+- a Stage 5a user-diagnostics cell that reports reviews per user, plots the review-count distribution with a threshold reference line, and assigns chronological review positions per user
+- a SteamRec interactions ETL cell that reshapes `user_review_positions_df` into `steamrec_interactions.parquet` and `steamrec_interactions.csv`
+- a final shared Kaggle upload cell that publishes the locally available raw and ETL parquet files into one dataset through `kagglehub`
+- a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies the locally available parquet resources exist there too, and previews whichever files the local parquet stack can decode
 
 Stage 4a is sample-only and resumable:
 
 - source input: `data/stage_04_selected_games.csv`
 - output CSV: `data/stage_04a_selected_games.csv`
-- output parquet: `data/stage_04a_selected_games.parquet`
+- output parquet: `data/raw_selected_games.parquet`
 - log file: `logs/errors_stage_04a.csv`
 
 The Stage 4a CSV patch derives the final schema as follows:
@@ -332,6 +336,32 @@ The Stage 4a CSV patch derives the final schema as follows:
 
 Missing Stage 4a values are written as empty CSV cells rather than the literal string `<NA>`.
 
+The downstream SteamRec app metadata ETL keeps the Stage 4a columns, rescales `%positive_reviews` from `0-100` into `0-1` with two decimal places, converts `app_category` from the pipe-separated Stage 4a string into an array of the original integer category ids, fills missing `price` values with `0.0`, and writes both:
+
+- `data/steamrec_app_metadata.parquet`
+- `data/steamrec_app_metadata.csv`
+
+The SteamRec app-category mapping then sorts the original category ids in increasing order, assigns dense ids from `1..n`, keeps the original id in a separate column, and writes both:
+
+- `data/steamrec_app_category_mapping.parquet`
+- `data/steamrec_app_category_mapping.csv`
+
+Its columns are:
+
+- `app_category_id`: the dense mapped category id from `1..n`
+- `app_category`: the original Steam category id from Stage 4a
+- `count`: the number of apps whose category arrays contain that original category id
+
+The SteamRec item mapping sorts the original app ids in increasing order, assigns dense `item_id` values from `1..n`, and writes both:
+
+- `data/steamrec_item_mapping.parquet`
+- `data/steamrec_item_mapping.csv`
+
+Its columns are:
+
+- `app_id`: the original Steam app id
+- `item_id`: the dense mapped item id from `1..n`
+
 The Stage 5a transform derives the final schema as follows:
 
 - `timestamp`: from `raw_json.timestamp_created`
@@ -341,15 +371,37 @@ The Stage 5a transform derives the final schema as follows:
 - `review_score`: `1` when `raw_json.voted_up` is true, otherwise `0` when false
 - `review_rating`: from `raw_json.votes_up`
 
+The Stage 5a user-diagnostics section then:
+
+- counts reviews per `user_id`
+- exposes `USER_REVIEW_COUNT_THRESHOLD` so you can ask how many users exceed a given review count
+- plots the review-count histogram on logarithmic axes, using `0-1`, `1-2`, `2-3`, `3-4`, and `4-5` buckets first and then widening buckets after `5`, with a red threshold reference line so you can tune that cutoff visually
+- sorts each user's reviews by timestamp and assigns `position = 1, 2, 3, ...` in chronological order
+- remaps `app_id` in the position output to the dense `item_id` while keeping the column name `app_id`
+- adds `app_category` to the position output as the array of mapped SteamRec category ids for that app
+
+The SteamRec interactions ETL section then reshapes `user_review_positions_df` for downstream use by:
+
+- renaming `app_id` to `item_id`
+- renaming `review_rating` to `review_upvotes`
+- keeping `app_category` as the mapped SteamRec category-id array for each interaction
+- writing both `data/steamrec_interactions.parquet` and `data/steamrec_interactions.csv`
+
+If the local parquet stack cannot decode `raw_selected_games.parquet` or `raw_reviews_dataset.parquet`, the notebook falls back to `stage_04a_selected_games.csv` or `stage_05a_reviews_dataset.csv.gz` for the downstream ETL and diagnostics cells.
+
 Run order in the notebook:
 
 1. Execute the Stage 4a CSV cell until `stage_04a_selected_games.csv` reaches the same row count as `stage_04_selected_games.csv`.
-2. Execute the next parquet cell to write `stage_04a_selected_games.parquet` from the completed CSV.
-3. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the next cell, then run the upload cell to publish the current parquet snapshot into one Kaggle dataset. `stage_04a_selected_games.parquet` and `stage_05a_reviews_dataset.parquet` are kept as separate tabular files inside that dataset when present.
+2. Execute the next parquet cell to write `raw_selected_games.parquet` from the completed CSV.
+3. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the next cell, then run the upload cell to publish the current Stage 4a parquet snapshot into one Kaggle dataset.
 4. Execute the Stage 5a CSV cell to derive `stage_05a_reviews_dataset.csv.gz` from `stage_05_reviews_dataset.csv.gz`.
-5. Execute the next Stage 5a parquet cell to write `stage_05a_reviews_dataset.parquet` from the completed Stage 5a gzipped CSV.
-6. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the next cell, then run the upload cell to publish both stage parquet files into the same Kaggle dataset.
-7. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that `selected-games.parquet` and `reviews-dataset.parquet` are present, and inspect the downloaded head / tail for both files.
+5. Execute the next Stage 5a parquet cell to write `raw_reviews_dataset.parquet` from the completed Stage 5a gzipped CSV.
+6. Execute the SteamRec app metadata ETL cell to write `steamrec_app_metadata.parquet` and `steamrec_app_metadata.csv`.
+7. Execute the mapping-tables cell to write `steamrec_app_category_mapping.parquet`, `steamrec_app_category_mapping.csv`, `steamrec_item_mapping.parquet`, and `steamrec_item_mapping.csv`.
+8. Inspect the Stage 5a user-diagnostics cell and adjust `USER_REVIEW_COUNT_THRESHOLD` if you want a different review-count cutoff.
+9. Execute the SteamRec interactions ETL cell to write `steamrec_interactions.parquet` and `steamrec_interactions.csv` from `user_review_positions_df`.
+10. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet`.
+11. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
