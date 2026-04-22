@@ -17,7 +17,7 @@ PROJECT_NAME="cs5242-project"
 
 # Use the shared cluster environment that already has the required Python toolchain.
 echo "Activating environment: /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/scratch/environments/base/bin/activate"
-source /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/env/bin/activate
+source /home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/scratch/environments/base/bin/activate
 echo "Environment activated"
 echo "Submitting from directory: $(pwd) [Is same as ${SLURM_SUBMIT_DIR}?]"
 cd "/home/${SOC_USERNAME_PREFIX}/${SOC_USERNAME}/${PROJECT_NAME}"
