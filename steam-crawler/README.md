@@ -316,6 +316,7 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 - a mapping-tables cell that writes `steamrec_app_category_mapping.parquet`, `steamrec_app_category_mapping.csv`, `steamrec_item_mapping.parquet`, and `steamrec_item_mapping.csv`
 - a Stage 5a user-diagnostics cell that reports reviews per user, plots the review-count distribution with a threshold reference line, and assigns chronological review positions per user
 - a SteamRec interactions ETL cell that reshapes `user_review_positions_df` into `steamrec_interactions.parquet` and `steamrec_interactions.csv`
+- a SteamRec sequences ETL cell that reshapes `steamrec_interactions` into `steamrec_sequences.parquet` and `steamrec_sequences.csv`
 - a final shared Kaggle upload cell that publishes the locally available raw and ETL parquet files into one dataset through `kagglehub`
 - a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies the locally available parquet resources exist there too, and previews whichever files the local parquet stack can decode
 
@@ -374,9 +375,10 @@ The Stage 5a transform derives the final schema as follows:
 The Stage 5a user-diagnostics section then:
 
 - counts reviews per `user_id`
-- exposes `USER_REVIEW_COUNT_THRESHOLD` so you can ask how many users exceed a given review count
+- exposes `USER_REVIEW_COUNT_THRESHOLD` as the minimum reviews per user kept for downstream SteamRec interactions and sequences, using `review_count >= USER_REVIEW_COUNT_THRESHOLD`
 - plots the review-count histogram on logarithmic axes, using `0-1`, `1-2`, `2-3`, `3-4`, and `4-5` buckets first and then widening buckets after `5`, with a red threshold reference line so you can tune that cutoff visually
 - sorts each user's reviews by timestamp and assigns `position = 1, 2, 3, ...` in chronological order
+- filters `user_review_positions_df` down to only the users who meet that minimum review count before any downstream SteamRec ETL runs
 - remaps `app_id` in the position output to the dense `item_id` while keeping the column name `app_id`
 - adds `app_category` to the position output as the array of mapped SteamRec category ids for that app
 
@@ -387,6 +389,19 @@ The SteamRec interactions ETL section then reshapes `user_review_positions_df` f
 - renaming `review_rating` to `review_upvotes`
 - keeping `app_category` as the mapped SteamRec category-id array for each interaction
 - writing both `data/steamrec_interactions.parquet` and `data/steamrec_interactions.csv`
+
+The SteamRec sequences ETL section then reshapes `steamrec_interactions` into one row per `user_id` by:
+
+- sorting each user's interactions by `position`
+- keeping `test_sequence` as the full mapped `item_id` history
+- setting `sequence_length` to the length of `test_sequence`
+- setting `train_sequence` to all but the last two items
+- setting `validation_sequence` to all but the last item
+- setting `validation_target` to the second-last item when present
+- setting `test_target` to the last item when present
+- attaching aligned arrays for `timestamps`, `ratings`, `review_upvotes`, `app_category`, `app_num_reviews`, and `app_price`
+- mapping `app_num_reviews` and `app_price` from the original app ids in `steamrec_app_metadata` through `steamrec_item_mapping`, while keeping the final sequence columns on mapped SteamRec item ids
+- writing both `data/steamrec_sequences.parquet` and `data/steamrec_sequences.csv`
 
 If the local parquet stack cannot decode `raw_selected_games.parquet` or `raw_reviews_dataset.parquet`, the notebook falls back to `stage_04a_selected_games.csv` or `stage_05a_reviews_dataset.csv.gz` for the downstream ETL and diagnostics cells.
 
@@ -401,8 +416,9 @@ Run order in the notebook:
 7. Execute the mapping-tables cell to write `steamrec_app_category_mapping.parquet`, `steamrec_app_category_mapping.csv`, `steamrec_item_mapping.parquet`, and `steamrec_item_mapping.csv`.
 8. Inspect the Stage 5a user-diagnostics cell and adjust `USER_REVIEW_COUNT_THRESHOLD` if you want a different review-count cutoff.
 9. Execute the SteamRec interactions ETL cell to write `steamrec_interactions.parquet` and `steamrec_interactions.csv` from `user_review_positions_df`.
-10. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet`.
-11. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode.
+10. Execute the SteamRec sequences ETL cell to write `steamrec_sequences.parquet` and `steamrec_sequences.csv` from `steamrec_interactions`.
+11. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet` and `steamrec_sequences.parquet`.
+12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
