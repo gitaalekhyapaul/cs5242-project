@@ -383,6 +383,7 @@ The Stage 5a user-diagnostics section then:
 The SteamRec interactions ETL section then reshapes `user_review_positions_df` for downstream use by:
 
 - renaming `app_id` to `item_id`
+- renaming `review_score` to `rating`
 - renaming `review_rating` to `review_upvotes`
 - keeping `app_category` as the mapped SteamRec category-id array for each interaction
 - writing both `data/steamrec_interactions.parquet` and `data/steamrec_interactions.csv`
