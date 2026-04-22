@@ -48,7 +48,7 @@ def _stage_05a_csv_path(data_dir: Path) -> Path:
 
 
 def _stage_05a_parquet_path(data_dir: Path) -> Path:
-    return data_dir / "stage_05a_reviews_dataset.parquet"
+    return data_dir / "raw_reviews_dataset.parquet"
 
 
 def _open_text(path: Path, mode: str):
@@ -152,7 +152,7 @@ def _extract_stage_05a_row(stage_05_row: dict[str, str]) -> dict[str, object]:
     if voted_up is True:
         review_score = 1
     elif voted_up is False:
-        review_score = 0
+        review_score = -1
     else:
         review_score = pd.NA
 
