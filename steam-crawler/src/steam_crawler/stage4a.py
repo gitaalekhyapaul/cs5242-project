@@ -22,7 +22,7 @@ def _stage_04a_csv_path(data_dir: Path) -> Path:
 
 
 def _stage_04a_parquet_path(data_dir: Path) -> Path:
-    return data_dir / "stage_04a_selected_games.parquet"
+    return data_dir / "raw_selected_games.parquet"
 
 
 def _load_stage_04_df(path: Path) -> pd.DataFrame:

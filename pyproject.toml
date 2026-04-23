@@ -8,19 +8,21 @@ dependencies = [
   "duckdb>=1.3.2",
   "huggingface-hub>=0.32.0",
   "ipykernel>=6.29.0",
+  "kagglehub>=1.0.0",
   "numpy>=2.2.0",
   "pandas>=2.3.0",
   "pyarrow>=21.0.0",
+  "python-dotenv>=1.0.1",
   "pyyaml>=6.0.2",
-  "torch==2.9.1+cu129",
-  "torchaudio==2.11.0+cu129",
-  "torchvision==0.24.1+cu129",
+  "torch==2.9.1+cu129 ; sys_platform == 'linux'",
+  "torch==2.9.1 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
   "tqdm>=4.67.0",
 ]
 
 [project.scripts]
 prepare-mobilerec = "models.prepare_mobilerec:main"
 train-sasrec = "models.train_sasrec:main"
+upload-processed-to-kaggle = "models.upload_processed_to_kaggle:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -35,6 +37,4 @@ url = "https://download.pytorch.org/whl/cu129"
 explicit = true
 
 [tool.uv.sources]
-torch = [{ index = "pytorch-cu129" }]
-torchvision = [{ index = "pytorch-cu129" }]
-torchaudio = [{ index = "pytorch-cu129" }]
+torch = [{ index = "pytorch-cu129", marker = "sys_platform == 'linux'" }]
