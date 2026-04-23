@@ -193,6 +193,13 @@ The script:
 - preserves the relative file layout inside the Kaggle dataset version
 - maps `KAGGLE_API_TOKEN` to `KAGGLE_KEY` internally for the Kaggle client
 
+The Kaggle upload cell in `eda_etl.ipynb` uses the same uploader helpers and also stages compatibility aliases for downstream Kaggle consumers:
+- `final_app_category.parquet` from `app_category_mapping.parquet`
+- `final_sequences.parquet` from `enriched_mobilerec_sequences.parquet`
+- `final_item_mapping.parquet` from `item_mapping.parquet`
+
+A separate Kaggle sanity-check cell downloads the Kaggle snapshot with retries and previews each expected parquet, so upload and verification can be rerun independently.
+
 Useful flags:
 
 - `--env-file /path/to/.env` to use a different env file
