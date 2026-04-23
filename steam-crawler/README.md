@@ -317,8 +317,8 @@ This keeps exploratory work and patch jobs pointed at the same staged data locat
 - a Stage 5a user-diagnostics cell that reports reviews per user, plots the review-count distribution with a threshold reference line, and assigns chronological review positions per user
 - a SteamRec interactions ETL cell that reshapes `user_review_positions_df` into `steamrec_interactions.parquet` and `steamrec_interactions.csv`
 - a SteamRec sequences ETL cell that reshapes `steamrec_interactions` into `steamrec_sequences.parquet` and `steamrec_sequences.csv`
-- a final shared Kaggle upload cell that publishes the locally available raw and ETL parquet files into one dataset through `kagglehub`
-- a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies the locally available parquet resources exist there too, and previews whichever files the local parquet stack can decode
+- a final shared Kaggle upload cell that publishes the locally available raw and ETL parquet files into one dataset through `kagglehub`, including `final_app_category.parquet`, `final_item_mapping.parquet`, and `final_sequences.parquet` aliases for the SteamRec artifacts
+- a final Kaggle sanity-check cell that downloads the shared dataset back from Kaggle, verifies the locally available parquet resources exist there too, checks the `final_item_mapping.parquet` column contract, and previews whichever files the local parquet stack can decode
 
 Stage 4a is sample-only and resumable:
 
@@ -362,6 +362,8 @@ Its columns are:
 
 - `app_id`: the original Steam app id
 - `item_id`: the dense mapped item id from `1..n`
+
+The Kaggle upload cell also writes `data/final_item_mapping.parquet` from this table with `app_id` renamed to `app_package`, so downstream consumers can read the final mapping with columns `app_package` and `item_id`.
 
 The Stage 5a transform derives the final schema as follows:
 
@@ -417,8 +419,8 @@ Run order in the notebook:
 8. Inspect the Stage 5a user-diagnostics cell and adjust `USER_REVIEW_COUNT_THRESHOLD` if you want a different review-count cutoff.
 9. Execute the SteamRec interactions ETL cell to write `steamrec_interactions.parquet` and `steamrec_interactions.csv` from `user_review_positions_df`.
 10. Execute the SteamRec sequences ETL cell to write `steamrec_sequences.parquet` and `steamrec_sequences.csv` from `steamrec_interactions`.
-11. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet` and `steamrec_sequences.parquet`.
-12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, and inspect the previews that the local parquet stack can decode. The verification cell now retries with exponential backoff from a 10-second base for up to 10 retries, capped at 300 seconds per wait, to tolerate Kaggle processing delays after upload.
+11. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet`, `steamrec_sequences.parquet`, and the `final_app_category.parquet`, `final_item_mapping.parquet`, and `final_sequences.parquet` aliases.
+12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, assert that `final_item_mapping.parquet` uses `app_package` rather than `app_id`, and inspect the previews that the local parquet stack can decode. The verification cell now retries with exponential backoff from a 10-second base for up to 10 retries, capped at 300 seconds per wait, to tolerate Kaggle processing delays after upload.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
