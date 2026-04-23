@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from models.sasrec import SASRec
-
+from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a SASRec baseline on prepared MobileRec sequences.")
@@ -188,7 +188,7 @@ class Metrics:
 
 
 def evaluate(
-    model: SASRec,
+    model: SASRec | TiSASRec | TiSASRecWithoutMetadata,
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
@@ -218,7 +218,7 @@ def evaluate(
 
 
 def evaluate_full_ranking(
-    model: SASRec,
+    model: SASRec | TiSASRec | TiSASRecWithoutMetadata,
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
@@ -265,7 +265,10 @@ def main() -> None:
 
     sequences = pd.read_parquet(args.data_dir / "sequences.parquet")
     item_mapping = pd.read_parquet(args.data_dir / "item_mapping.parquet")
+    category_mapping = pd.read_parquet(args.data_dir / "app_category_mapping.parquet")
+
     num_items = int(item_mapping["item_id"].max())
+    num_categories = int(category_mapping["app_category_id"].max())
 
     train_dataset = TrainDataset(
         sequences=sequences,
