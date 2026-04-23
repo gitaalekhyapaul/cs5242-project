@@ -2,6 +2,7 @@ import sys
 import copy
 import random
 import ast
+import torch
 import numpy as np
 from tqdm import tqdm
 from collections import defaultdict
@@ -219,12 +220,12 @@ def evaluate(model, dataset, args):
     HT = 0.0
     valid_user = 0.0
 
-    if user_num>10000:
+    if user_num > 10000:
         users = random.sample(range(1, user_num + 1), 10000)
     else:
         users = range(1, user_num + 1)
-    for u in users:
 
+    for u in users:
         if len(train[u]) < 1 or len(test[u]) < 1: continue
 
         seq = np.zeros([args.maxlen], dtype=np.int32)
@@ -274,10 +275,14 @@ def evaluate_valid(model, dataset, args):
     NDCG = 0.0
     valid_user = 0.0
     HT = 0.0
-    if user_num>10000:
+    if user_num > 10000:
         users = random.sample(range(1, user_num + 1), 10000)
     else:
         users = range(1, user_num + 1)
+
+    all_labels = []
+    all_preds = []
+
     for u in users:
         if len(train[u]) < 1 or len(valid[u]) < 1: continue
 
@@ -300,8 +305,16 @@ def evaluate_valid(model, dataset, args):
             item_idx.append(t)
 
         time_matrix = computeRePos(time_seq, args.time_span)
-        predictions = -model.predict(*[np.array(l) for l in [[seq], [time_matrix],item_idx]])
+        logits = model.predict(*[np.array(l) for l in [[seq], [time_matrix], item_idx]])
+        predictions = -logits
         predictions = predictions[0]
+
+
+        # todo: check shape of logits and valid[u]
+        ytrue = torch.zeros_like(logits)
+        ytrue[valid[u][-1]] = 1.0
+        all_labels.append(ytrue)
+        all_preds.append(torch.softmax(logits))
 
         rank = predictions.argsort().argsort()[0].item()
 
@@ -314,4 +327,4 @@ def evaluate_valid(model, dataset, args):
             print('.',end='')
             sys.stdout.flush()
 
-    return NDCG / valid_user, HT / valid_user
+    return NDCG / valid_user, HT / valid_user, np.array(all_labels), np.array(all_preds)

@@ -4,10 +4,13 @@ import torch
 import pickle
 import argparse
 
+from sklearn.metrics import roc_auc_score
+
 from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
 from models.sasrec import SASRec
 from tqdm import tqdm
 from utils import *
+
 
 USE_BASELINE_MODEL = False
 ENRICH_WITH_METADATA = False
@@ -107,6 +110,7 @@ if args.inference_only:
 bce_criterion = torch.nn.BCEWithLogitsLoss()
 # add weight decay for l2 regularization on embedding vectors during training
 adam_optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98), weight_decay=args.l2_emb)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(adam_optimizer, mode='max', factor=0.1, patience=3)
 
 T = 0.0
 t0 = time.time()
@@ -150,9 +154,12 @@ for epoch in range(epoch_start_idx, args.num_epochs + 1):
     t1 = time.time() - t0
     T += t1
     print('\nEvaluating', end='')
-    t_valid = evaluate_valid(model, dataset, args)
+    NDCG_10, HR_10, all_labels, all_preds = evaluate_valid(model, dataset, args)
     print('epoch:%d, time: %f(s), average training loss: %f, valid (NDCG@10: %.4f, HR@10: %.4f)'
-        % (epoch, T, float(np.mean(epoch_losses)), t_valid[0], t_valid[1]))
+        % (epoch, T, float(np.mean(epoch_losses)), NDCG_10, HR_10))
+
+    current_auc = roc_auc_score(all_labels, all_preds)
+    scheduler.step(current_auc)
 
     # f.write(str(t_valid) + ' ' + str(t_test) + '\n')
     # f.flush()

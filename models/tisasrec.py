@@ -85,7 +85,8 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         # time_mask = time_mask.unsqueeze(-1).repeat(self.head_num, 1, 1)
         # time_mask = time_mask.expand(-1, -1, attn_weights.shape[-1])
 
-        time_mask = time_mask.unsqueeze(-1).expand(self.head_num, -1, attn_weights.shape[-1])
+        S = attn_weights.shape[-1]
+        time_mask = time_mask.unsqueeze(0).unsqueeze(-1).expand(self.head_num, -1, -1, S).reshape(-1, S, S)
         attn_mask = attn_mask.unsqueeze(0).expand(attn_weights.shape[0], -1, -1)
 
         paddings = torch.ones(attn_weights.shape) * (-2**32+1) # -1e23 # float('-inf')
