@@ -180,10 +180,6 @@ class EvalDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.rows[index]
-        pos_seq = pad_sequence(list(row["targets"]), self.max_len)
-        neg_trimmed = [self._sample_negative(row["seen"]) for _ in row["targets"]]
-        neg_seq = pad_sequence(neg_trimmed, self.max_len)
-
         return {
             "input_ids": torch.from_numpy(row["input_ids"]),
             "candidate_ids": torch.from_numpy(row["candidate_ids"]),
@@ -445,6 +441,7 @@ def main() -> None:
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
+    #* if using standard loss computation
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
     #* if using alternative loss computation
@@ -466,19 +463,27 @@ def main() -> None:
             neg_ids = batch["neg_ids"].to(device)
             pos_logits, neg_logits = model.training_logits(
                 input_ids=input_ids,
-                pos_ids=pos_ids,
+                pos_ids=torch.abs(pos_ids),
                 neg_ids=neg_ids,
             )
 
+            negative_item_mask = pos_ids < 0
+            pos_labels_pos = torch.ones_like(pos_logits[~negative_item_mask])
+            pos_labels_neg = torch.zeros_like(pos_logits[negative_item_mask])
+            neg_labels = torch.zeros_like(neg_logits)
+
+            #* loss computation
             mask = pos_ids.ne(0)
-            pos_loss = bce(pos_logits, torch.ones_like(pos_logits))
-            neg_loss = bce(neg_logits, torch.zeros_like(neg_logits))
+            pos_loss = bce(pos_logits[~negative_item_mask], pos_labels_pos)
+            neg_loss = bce(neg_logits, neg_labels)
+            neg_loss += bce(neg_logits[negative_item_mask], pos_labels_neg)
             loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
 
             #* alternative loss computation
             # mask = pos_ids != 0 # mask padding items
-            # loss = bce(pos_logits[mask], pos_ids[mask].float())
-            # loss += bce(neg_logits[mask], neg_ids[mask].float())
+            # loss = bce(pos_logits[mask & ~negative_item_mask], pos_labels_pos[mask].float())
+            # loss += bce(neg_logits[mask], neg_labels[mask].float())
+            # loss += bce(neg_logits[mask & negative_item_mask], pos_labels_neg[mask].float())
 
             loss.backward()
             optimizer.step()
