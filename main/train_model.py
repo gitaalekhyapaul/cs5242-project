@@ -55,7 +55,10 @@ def parse_args() -> argparse.Namespace:
         help="Also report full-ranking test metrics against the entire item set.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    # usage: --inference-only true
     parser.add_argument('--inference-only', default=False, type=str2bool)
+    # usage: --training-only true
+    parser.add_argument('--training-only', default=False, type=str2bool)
 
     return parser.parse_args()
 
@@ -83,7 +86,7 @@ def pad_feature_sequence(
     trimmed = values[-max_len:, :feature_dim]
     padded = np.zeros((max_len, feature_dim), dtype=np.int64)
     if len(trimmed):
-        padded[-len(trimmed) :, : trimmed.shape[1]] = trimmed
+        padded[-len(trimmed):, :trimmed.shape[1]] = trimmed
     return padded
 
 def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
@@ -131,6 +134,7 @@ class TrainDataset(Dataset):
         sequences: pd.DataFrame,
         max_len: int,
         num_items: int,
+        num_categories: int,
         seed: int,
         negative_items_handling: str,
         relation_matrix: np.ndarray,
@@ -138,6 +142,7 @@ class TrainDataset(Dataset):
         self.rows: list[dict[str, object]] = []
         self.max_len = max_len
         self.num_items = num_items
+        self.num_categories = num_categories
         self.rng = random.Random(seed)
         self.relation_matrix = relation_matrix
 
@@ -222,8 +227,7 @@ class TrainDataset(Dataset):
 
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
         metadata_seq = row["metadata_seq_padded"]
-        # todo: pad category_seq
-        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len)
+        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len, self.num_categories)
 
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
@@ -248,6 +252,7 @@ class EvalDataset(Dataset):
         sequence_column: str,
         target_column: str,
         num_items: int,
+        num_categories: int,
         negative_samples: int,
         max_len: int,
         seed: int,
@@ -468,6 +473,7 @@ def main() -> None:
         sequences=sequences,
         max_len=args.max_len,
         num_items=num_items,
+        num_categories=num_categories,
         seed=args.seed,
         negative_items_handling=args.negative_items_handling,
         relation_matrix=relation_matrix,
@@ -480,45 +486,50 @@ def main() -> None:
         sequence_column="train_sequence",
         target_column="validation_target",
         num_items=num_items,
+        num_categories=num_categories,
         negative_samples=args.eval_negative_samples,
         max_len=args.max_len,
         seed=args.seed + 1,
     )
     print('Prepared val dataset')
 
-    print('Preparing test dataset')
-    test_dataset = EvalDataset(
-        sequences=sequences,
-        sequence_column="validation_sequence",
-        target_column="test_target",
-        num_items=num_items,
-        negative_samples=args.eval_negative_samples,
-        max_len=args.max_len,
-        seed=args.seed + 2,
-    )
-    print('Prepared test dataset')
+    if not args.training_only:
+        print('Preparing test dataset')
+        test_dataset = EvalDataset(
+            sequences=sequences,
+            sequence_column="validation_sequence",
+            target_column="test_target",
+            num_items=num_items,
+            num_categories=num_categories,
+            negative_samples=args.eval_negative_samples,
+            max_len=args.max_len,
+            seed=args.seed + 2,
+        )
+        print('Prepared test dataset')
 
-    print('Preparing full test dataset')
-    full_test_dataset = FullEvalDataset(
-        sequences=sequences,
-        sequence_column="validation_sequence",
-        target_column="test_target",
-        max_len=args.max_len,
-    )
-    print('Prepared full test dataset')
+        print('Preparing full test dataset')
+        full_test_dataset = FullEvalDataset(
+            sequences=sequences,
+            sequence_column="validation_sequence",
+            target_column="test_target",
+            max_len=args.max_len,
+        )
+        print('Prepared full test dataset')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    full_test_loader = DataLoader(
-        full_test_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=0,
-        collate_fn=collate_full_eval_batch,
-    )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if not args.training_only:
+        test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+        full_test_loader = DataLoader(
+            full_test_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=collate_full_eval_batch,
+        )
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
     print(f"Using device: {device}")
 
     model = None
@@ -590,11 +601,7 @@ def main() -> None:
 
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
 
-    #* if using standard loss computation
     bce = nn.BCEWithLogitsLoss(reduction="none")
-
-    #* if using alternative loss computation
-    # bce = nn.BCEWithLogitsLoss(reduction="mean")
 
     history: list[dict[str, float | int]] = []
 
@@ -616,32 +623,24 @@ def main() -> None:
                 neg_ids=neg_ids,
             )
 
-            negative_item_mask = pos_ids < 0
+            negative_item_mask = pos_ids.lt(0)
+            mask = pos_ids.ne(0)
+            valid_positive_mask = mask & (~negative_item_mask)
+
             pos_labels = torch.ones_like(pos_logits)
-            pos_labels_pos = torch.ones_like(pos_logits[~negative_item_mask])
-            pos_labels_neg = torch.zeros_like(pos_logits[negative_item_mask])
             neg_labels = torch.zeros_like(neg_logits)
 
-            #todo: rethink loss
-
-            # temp loss
-            mask = pos_ids.ne(0)
+            #* loss computation
             pos_loss = bce(pos_logits, pos_labels)
             neg_loss = bce(neg_logits, neg_labels)
-            loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
+            explicit_neg_loss = bce(pos_logits, neg_labels)
 
-            #* loss computation
-            # mask = pos_ids.ne(0)
-            # pos_loss = bce(pos_logits, pos_labels_pos) * (~negative_item_mask)
-            # neg_loss = bce(neg_logits, neg_labels)
-            # neg_loss += bce(neg_logits, pos_labels_neg) * negative_item_mask
-            # loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
-
-            #* alternative loss computation
-            # mask = pos_ids != 0 # mask padding items
-            # loss = bce(pos_logits[mask & ~negative_item_mask], pos_labels_pos[mask].float())
-            # loss += bce(neg_logits[mask], neg_labels[mask].float())
-            # loss += bce(neg_logits[mask & negative_item_mask], pos_labels_neg[mask].float())
+            loss = (
+                (pos_loss * valid_positive_mask) +
+                (neg_loss * mask) +
+                # for negative marked items, apply explicit neg_loss
+                (explicit_neg_loss * (mask & negative_item_mask))
+            ).sum() / mask.sum().clamp(min=1)
 
             loss.backward()
             optimizer.step()
@@ -667,6 +666,10 @@ def main() -> None:
             torch.save(model.state_dict(), best_checkpoint)
 
     model.load_state_dict(torch.load(best_checkpoint, map_location=device))
+
+    if args.training_only:
+        return
+
     test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
     full_test_metrics = None
     if args.report_full_eval:
