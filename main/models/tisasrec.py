@@ -252,19 +252,19 @@ class TiSASRec(torch.nn.Module):
 
         return log_feats
 
-    def forward(self, seqs, time_matrices, pos_seqs, neg_seqs, metadata_seqs=None, category_seqs=None): # for training
-        log_vecs = self.seq2vec(seqs, metadata_seqs, category_seqs)
-        log_feats = self.vec2feats(log_vecs, seqs, time_matrices)
+    def training_logits(self, input_ids, pos_ids, neg_ids, time_matrices=None, metadata_seqs=None, category_seqs=None): # for training
+        log_vecs = self.seq2vec(input_ids, metadata_seqs, category_seqs)
+        log_feats = self.vec2feats(log_vecs, input_ids, time_matrices)
 
-        pos_embs = self.seq2vec(torch.LongTensor(pos_seqs).to(self.device), metadata_seqs, category_seqs, embed_only=True)
-        neg_embs = self.seq2vec(torch.LongTensor(neg_seqs).to(self.device), metadata_seqs, category_seqs, embed_only=True)
+        pos_embs = self.seq2vec(torch.LongTensor(pos_ids).to(self.device), metadata_seqs, category_seqs, embed_only=True)
+        neg_embs = self.seq2vec(torch.LongTensor(neg_ids).to(self.device), metadata_seqs, category_seqs, embed_only=True)
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
 
         return pos_logits, neg_logits
 
-    def predict(self, seqs, time_matrices, item_indices, metadata_seqs=None, category_seqs=None): # for inference
+    def score_candidates(self, seqs, time_matrices, item_indices, metadata_seqs=None, category_seqs=None): # for inference
         log_vecs = self.seq2vec(seqs, metadata_seqs, category_seqs)
         log_feats = self.vec2feats(log_vecs, seqs, time_matrices)
 
@@ -274,7 +274,19 @@ class TiSASRec(torch.nn.Module):
 
         logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
 
-        return logits # preds # (U, I)
+        return logits
+
+    def user_representation(self, input_ids) -> torch.Tensor:
+        encoded = self.encode(input_ids)
+        lengths = input_ids.ne(0).sum(dim=1).clamp(min=1) - 1
+        return encoded[torch.arange(encoded.size(0), device=input_ids.device), lengths]
+
+    def score_all_items(self, input_ids: torch.Tensor) -> torch.Tensor:
+        user_repr = self.user_representation(input_ids)
+        all_item_emb = self.item_embedding.weight
+        return user_repr @ all_item_emb.transpose(0, 1)
+
+
 
 
 class TiSASRecWithoutMetadata(TiSASRec):
