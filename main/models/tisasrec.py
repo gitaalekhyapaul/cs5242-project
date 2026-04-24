@@ -174,6 +174,12 @@ class TiSASRec(torch.nn.Module):
             new_fwd_layer = PointWiseFeedForward(hidden_size, dropout)
             self.forward_layers.append(new_fwd_layer)
 
+        self.clear_padding_item_embedding()
+
+    def clear_padding_item_embedding(self):
+        if self.item_emb.padding_idx is not None:
+            with torch.no_grad():
+                self.item_emb.weight[self.item_emb.padding_idx].fill_(0.0)
 
     def seq2vec(self, seqs, metadata_seqs, category_seqs, embed_only=False):
         item_vecs = self.item_emb(torch.LongTensor(seqs).to(self.device))

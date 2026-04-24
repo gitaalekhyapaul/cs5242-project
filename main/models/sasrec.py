@@ -75,11 +75,11 @@ class SASRec(nn.Module):
         )
         self.final_norm = nn.LayerNorm(hidden_size)
         self.hidden_size = hidden_size
-        self.reset_parameters()
+        self.clear_padding_item_embedding()
 
-    def reset_parameters(self) -> None:
-        nn.init.normal_(self.item_embedding.weight, std=0.02)
-        nn.init.normal_(self.position_embedding.weight, std=0.02)
+    def clear_padding_item_embedding(self) -> None:
+        # nn.init.normal_(self.item_embedding.weight, std=0.02)
+        # nn.init.normal_(self.position_embedding.weight, std=0.02)
         if self.item_embedding.padding_idx is not None:
             with torch.no_grad():
                 self.item_embedding.weight[self.item_embedding.padding_idx].fill_(0.0)
