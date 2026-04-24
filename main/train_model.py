@@ -474,49 +474,49 @@ def main() -> None:
     )
     print('Prepared train dataset')
 
-    # print('Preparing val dataset')
-    # val_dataset = EvalDataset(
-    #     sequences=sequences,
-    #     sequence_column="train_sequence",
-    #     target_column="validation_target",
-    #     num_items=num_items,
-    #     negative_samples=args.eval_negative_samples,
-    #     max_len=args.max_len,
-    #     seed=args.seed + 1,
-    # )
-    # print('Prepared val dataset')
+    print('Preparing val dataset')
+    val_dataset = EvalDataset(
+        sequences=sequences,
+        sequence_column="train_sequence",
+        target_column="validation_target",
+        num_items=num_items,
+        negative_samples=args.eval_negative_samples,
+        max_len=args.max_len,
+        seed=args.seed + 1,
+    )
+    print('Prepared val dataset')
 
-    # print('Preparing test dataset')
-    # test_dataset = EvalDataset(
-    #     sequences=sequences,
-    #     sequence_column="validation_sequence",
-    #     target_column="test_target",
-    #     num_items=num_items,
-    #     negative_samples=args.eval_negative_samples,
-    #     max_len=args.max_len,
-    #     seed=args.seed + 2,
-    # )
-    # print('Prepared test dataset')
+    print('Preparing test dataset')
+    test_dataset = EvalDataset(
+        sequences=sequences,
+        sequence_column="validation_sequence",
+        target_column="test_target",
+        num_items=num_items,
+        negative_samples=args.eval_negative_samples,
+        max_len=args.max_len,
+        seed=args.seed + 2,
+    )
+    print('Prepared test dataset')
 
-    # print('Preparing full test dataset')
-    # full_test_dataset = FullEvalDataset(
-    #     sequences=sequences,
-    #     sequence_column="validation_sequence",
-    #     target_column="test_target",
-    #     max_len=args.max_len,
-    # )
-    # print('Prepared full test dataset')
+    print('Preparing full test dataset')
+    full_test_dataset = FullEvalDataset(
+        sequences=sequences,
+        sequence_column="validation_sequence",
+        target_column="test_target",
+        max_len=args.max_len,
+    )
+    print('Prepared full test dataset')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
-    # val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    # full_test_loader = DataLoader(
-    #     full_test_dataset,
-    #     batch_size=args.batch_size,
-    #     shuffle=False,
-    #     num_workers=0,
-    #     collate_fn=collate_full_eval_batch,
-    # )
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    full_test_loader = DataLoader(
+        full_test_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=collate_full_eval_batch,
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -653,24 +653,24 @@ def main() -> None:
         scheduler.step()
 
         #* evaluate every epoch
-        # val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
-        # epoch_record = {
-        #     "epoch": epoch,
-        #     "train_loss": float(np.mean(epoch_losses)),
-        #     "val_hr_at_10": val_metrics.hr_at_10,
-        #     "val_ndcg_at_10": val_metrics.ndcg_at_10,
-        # }
+        val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
+        epoch_record = {
+            "epoch": epoch,
+            "train_loss": float(np.mean(epoch_losses)),
+            "val_hr_at_10": val_metrics.hr_at_10,
+            "val_ndcg_at_10": val_metrics.ndcg_at_10,
+        }
 
-        # history.append(epoch_record)
-        # if val_metrics.hr_at_10 > best_val_hr:
-        #     best_val_hr = val_metrics.hr_at_10
-        #     torch.save(model.state_dict(), best_checkpoint)
+        history.append(epoch_record)
+        if val_metrics.hr_at_10 > best_val_hr:
+            best_val_hr = val_metrics.hr_at_10
+            torch.save(model.state_dict(), best_checkpoint)
 
-    # model.load_state_dict(torch.load(best_checkpoint, map_location=device))
-    # test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
-    # full_test_metrics = None
-    # if args.report_full_eval:
-    #     full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
+    model.load_state_dict(torch.load(best_checkpoint, map_location=device))
+    test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
+    full_test_metrics = None
+    if args.report_full_eval:
+        full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
 
     metrics = {
         "config": vars(args),
