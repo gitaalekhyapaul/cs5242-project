@@ -23,7 +23,7 @@ class PointWiseFeedForward(torch.nn.Module):
         return outputs
 
 
-# Point-wise Feed-forward, actually 2 Conv1D for channel wise fusion
+# Using 2 Conv1D for channel wise fusion
 class PointWiseFeedForwardAlternate(torch.nn.Module):
     def __init__(self, hidden_size, dropout_rate):
 

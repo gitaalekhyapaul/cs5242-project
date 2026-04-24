@@ -71,6 +71,10 @@ def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
     return padded
 
 
+def generate_time_matrix(time_seq, time_span):
+    return []
+
+
 class TrainDataset(Dataset):
     def __init__(
         self,
