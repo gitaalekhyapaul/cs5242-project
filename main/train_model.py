@@ -17,6 +17,10 @@ from tqdm import tqdm
 from models.sasrec import SASRec
 from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
 
+supported_datasets = ['mobilerec', 'steamrec']
+supported_models = ['sasrec', 'tisasrec', 'tisasrec_m']
+negative_items_handling_modes = ['treat-as-positive', 'filter-negative', 'penalize-negative']
+
 def str2bool(s):
     if s not in {'false', 'true'}:
         raise ValueError('Not a valid boolean string')
@@ -28,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--data-dir", type=Path, default=Path("data/processed"))
 
     parser.add_argument("--model", type=str, default="sasrec")
+    parser.add_argument("--negative-items-handling", type=str, default="treat-as-positive")
     parser.add_argument("--output-dir", type=Path, default=Path("data/outputs"))
 
     parser.add_argument("--batch-size", type=int, default=256)
@@ -67,22 +72,47 @@ def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
 
 
 class TrainDataset(Dataset):
-    def __init__(self, sequences: pd.DataFrame, max_len: int, num_items: int, seed: int) -> None:
+    def __init__(
+        self,
+        sequences: pd.DataFrame,
+        max_len: int,
+        num_items: int,
+        seed: int,
+        negative_items_handling: str,
+    ) -> None:
         self.rows: list[dict[str, object]] = []
         self.max_len = max_len
         self.num_items = num_items
         self.rng = random.Random(seed)
         for row in sequences.itertuples(index=False):
             train_sequence = list(row.train_sequence)
+            ratings = list(row.ratings)
+
+            if negative_items_handling == 'filter-negative':
+                train_sequence = [
+                    t for t, r in zip(train_sequence, ratings) if r == 1
+                ]
+
             if len(train_sequence) < 2:
                 continue
+            positive_items = train_sequence
             history = train_sequence[:-1]
             targets = train_sequence[1:]
+            target_ratings = ratings[1:]
+
+            if negative_items_handling == 'treat-as-positive':
+                pass
+            elif negative_items_handling == 'penalize-negative':
+                targets = [t * r for t, r in zip(targets, target_ratings)]
+                positive_items = [
+                    t for t, r in zip(train_sequence, ratings) if r == 1
+                ]
+
             self.rows.append(
                 {
                     "history": history,
                     "targets": targets,
-                    "seen": set(train_sequence),
+                    "seen": set(positive_items),
                 }
             )
 
@@ -101,6 +131,7 @@ class TrainDataset(Dataset):
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
         neg_trimmed = [self._sample_negative(row["seen"]) for _ in row["targets"]]
         neg_seq = pad_sequence(neg_trimmed, self.max_len)
+
         return {
             "input_ids": torch.from_numpy(input_seq),
             "pos_ids": torch.from_numpy(pos_seq),
@@ -138,10 +169,6 @@ class EvalDataset(Dataset):
             candidates = [target] + list(negatives)
             self.rows.append(
                 {
-                    #* for validation loss computation
-                    "targets": targets,
-                    "seen": seen,
-
                     "input_ids": pad_sequence(sequence, max_len),
                     "candidate_ids": np.asarray(candidates, dtype=np.int64),
                     "target": 0,
@@ -161,10 +188,6 @@ class EvalDataset(Dataset):
             "input_ids": torch.from_numpy(row["input_ids"]),
             "candidate_ids": torch.from_numpy(row["candidate_ids"]),
             "target": torch.tensor(row["target"], dtype=torch.long),
-
-            #* for validation loss computation
-            "pos_ids": torch.from_numpy(pos_seq),
-            "neg_ids": torch.from_numpy(neg_seq),
         }
 
 
@@ -210,7 +233,6 @@ def collate_full_eval_batch(batch: list[dict[str, torch.Tensor]]) -> dict[str, o
 
 @dataclass
 class Metrics:
-    loss: float
     hr_at_10: float
     ndcg_at_10: float
 
@@ -225,29 +247,12 @@ def evaluate(
     model.eval()
     hit_scores: list[float] = []
     ndcg_scores: list[float] = []
-    losses: list[float] = []
 
     with torch.no_grad():
         for batch in tqdm(data_loader, desc=f"eval:{split_name}", leave=False):
             input_ids = batch["input_ids"].to(device)
             candidate_ids = batch["candidate_ids"].to(device)
             scores = model.score_candidates(input_ids=input_ids, candidate_ids=candidate_ids)
-
-            pos_ids = batch["pos_ids"].to(device)
-            neg_ids = batch["neg_ids"].to(device)
-            pos_logits, neg_logits = model.training_logits(
-                input_ids=input_ids,
-                pos_ids=pos_ids,
-                neg_ids=neg_ids,
-            )
-
-            bce = nn.BCEWithLogitsLoss(reduction="none")
-
-            mask = pos_ids.ne(0)
-            pos_loss = bce(pos_logits, torch.ones_like(pos_logits))
-            neg_loss = bce(neg_logits, torch.zeros_like(neg_logits))
-            loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
-            losses.append(loss)
 
             rankings = torch.argsort(scores, dim=1, descending=True)
             top_k = rankings[:, :10]
@@ -261,7 +266,6 @@ def evaluate(
                     ndcg_scores.append(0.0)
 
     return Metrics(
-        loss=float(np.mean(losses)),
         hr_at_10=float(np.mean(hit_scores)),
         ndcg_at_10=float(np.mean(ndcg_scores)),
     )
@@ -310,8 +314,21 @@ def evaluate_full_ranking(
 
 def main() -> None:
     args = parse_args()
+
+    if args.dataset not in supported_datasets:
+        raise ValueError(
+            f"Invalid dataset argument: '{args.dataset}'. "
+            f"Supported datasets are: {supported_datasets}."
+        )
+
+    if args.negative_items_handling not in negative_items_handling_modes:
+        raise ValueError(
+            f"Invalid negative item handling mode: '{args.negative_items_handling}'. "
+            f"Supported modes are: {negative_items_handling_modes}."
+        )
+
     set_seed(args.seed)
-    (args.output_dir / args.model).mkdir(parents=True, exist_ok=True)
+    (args.output_dir / args.model / args.negative_items_handling).mkdir(parents=True, exist_ok=True)
 
     sequences = pd.read_parquet(args.data_dir / args.dataset / "final_sequences.parquet")
     item_mapping = pd.read_parquet(args.data_dir / args.dataset / "final_item_mapping.parquet")
@@ -325,6 +342,7 @@ def main() -> None:
         max_len=args.max_len,
         num_items=num_items,
         seed=args.seed,
+        negative_item_handling=args.negative_items_handling,
     )
     val_dataset = EvalDataset(
         sequences=sequences,
@@ -365,14 +383,57 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    model = SASRec(
-        num_items=num_items,
-        max_len=args.max_len,
-        hidden_size=args.hidden_size,
-        num_blocks=args.num_blocks,
-        num_heads=args.num_heads,
-        dropout=args.dropout,
-    ).to(device)
+    model = None
+    if args.model == 'sasrec':
+        model = SASRec(
+            num_items=num_items,
+            max_len=args.max_len,
+            hidden_size=args.hidden_size,
+            num_blocks=args.num_blocks,
+            num_heads=args.num_heads,
+            dropout=args.dropout,
+        ).to(device)
+    elif args.model == 'tisasrec_m':
+        model = TiSASRec(
+            num_items=num_items,
+            num_categories=num_categories,
+            max_len=args.max_len,
+            hidden_size=args.hidden_size,
+            num_blocks=args.num_blocks,
+            num_heads=args.num_heads,
+            dropout=args.dropout,
+        ).to(device)
+    elif args.model == 'tisasrec':
+        model = TiSASRecWithoutMetadata(
+            num_items=num_items,
+            max_len=args.max_len,
+            hidden_size=args.hidden_size,
+            num_blocks=args.num_blocks,
+            num_heads=args.num_heads,
+            dropout=args.dropout,
+        ).to(device)
+
+    if not model:
+        raise ValueError(
+            f"Invalid model argument: '{args.model}'. "
+            f"Supported models are: {supported_models}."
+        )
+
+    for name, param in model.named_parameters():
+        try:
+            torch.nn.init.xavier_uniform_(param.data)
+        except:
+            pass # just ignore those failed init layers
+
+    best_val_hr = -1.0
+    best_checkpoint = args.output_dir / args.model / args.negative_items_handling / "best_model.pt"
+
+    if best_checkpoint.exists():
+        try:
+            model.load_state_dict(torch.load(best_checkpoint, map_location=device))
+        except:
+            print('failed loading state_dicts, pls check file path: ', end="")
+            print(best_checkpoint)
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
@@ -382,13 +443,13 @@ def main() -> None:
         # eps=1e-9, #uncomment if exploding loss/early plateau
     )
 
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+
     bce = nn.BCEWithLogitsLoss(reduction="none")
 
     #* if using alternative loss computation
     # bce = nn.BCEWithLogitsLoss(reduction="mean")
 
-    best_val_hr = -1.0
-    best_checkpoint = args.output_dir / args.model / "best_model.pt"
     history: list[dict[str, float | int]] = []
 
     for epoch in range(1, args.epochs + 1):
@@ -398,6 +459,8 @@ def main() -> None:
         epoch_losses: list[float] = []
         progress = tqdm(train_loader, desc=f"train:{epoch}", leave=False)
         for batch in progress:
+            optimizer.zero_grad()
+
             input_ids = batch["input_ids"].to(device)
             pos_ids = batch["pos_ids"].to(device)
             neg_ids = batch["neg_ids"].to(device)
@@ -406,8 +469,6 @@ def main() -> None:
                 pos_ids=pos_ids,
                 neg_ids=neg_ids,
             )
-
-            optimizer.zero_grad()
 
             mask = pos_ids.ne(0)
             pos_loss = bce(pos_logits, torch.ones_like(pos_logits))
@@ -426,13 +487,13 @@ def main() -> None:
             epoch_losses.append(loss_value)
             progress.set_postfix(loss=f"{loss_value:.4f}")
 
+        scheduler.step()
+
         #* evaluate every epoch
-        #todo: compute validation loss and append to epoch_record
         val_metrics = evaluate(model, val_loader, device, "val")
         epoch_record = {
             "epoch": epoch,
             "train_loss": float(np.mean(epoch_losses)),
-            "val_loss": val_metrics.loss,
             "val_hr_at_10": val_metrics.hr_at_10,
             "val_ndcg_at_10": val_metrics.ndcg_at_10,
         }
@@ -483,7 +544,7 @@ def main() -> None:
     if full_test_metrics is not None:
         metrics["full_test_hr_at_10"] = full_test_metrics.hr_at_10
         metrics["full_test_ndcg_at_10"] = full_test_metrics.ndcg_at_10
-    (args.output_dir / args.model / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
+    (args.output_dir / args.model / args.negative_items_handling / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
     print(json.dumps(metrics, indent=2, default=str))
 
 
