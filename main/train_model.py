@@ -431,7 +431,9 @@ def main() -> None:
 
     num_items = int(item_mapping["item_id"].max())
     num_categories = int(category_mapping["app_category_id"].max())
-    num_users = len(sequences)
+    # num_users = len(sequences)
+
+    relation_matrix = None
 
     if args.model in ['tisasrec_m', 'tisasrec']:
         try:
@@ -440,13 +442,14 @@ def main() -> None:
             relation_matrix = generate_relation_matrix(sequences, args.max_len, args.time_span)
             pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
 
+    print(f'relation matrix enabled: {bool(relation_matrix)}')
 
     train_dataset = TrainDataset(
         sequences=sequences,
         max_len=args.max_len,
         num_items=num_items,
         seed=args.seed,
-        negative_item_handling=args.negative_items_handling,
+        negative_items_handling=args.negative_items_handling,
         relation_matrix=relation_matrix,
     )
     val_dataset = EvalDataset(
