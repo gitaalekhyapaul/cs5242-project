@@ -280,9 +280,6 @@ def evaluate_valid(model, dataset, args):
     else:
         users = range(1, user_num + 1)
 
-    all_labels = []
-    all_preds = []
-
     for u in users:
         if len(train[u]) < 1 or len(valid[u]) < 1: continue
 
@@ -310,12 +307,6 @@ def evaluate_valid(model, dataset, args):
         predictions = predictions[0]
 
 
-        # todo: check shape of logits and valid[u]
-        ytrue = torch.zeros_like(logits)
-        ytrue[valid[u][-1]] = 1.0
-        all_labels.append(ytrue)
-        all_preds.append(torch.softmax(logits))
-
         rank = predictions.argsort().argsort()[0].item()
 
         valid_user += 1
@@ -327,4 +318,4 @@ def evaluate_valid(model, dataset, args):
             print('.',end='')
             sys.stdout.flush()
 
-    return NDCG / valid_user, HT / valid_user, np.array(all_labels), np.array(all_preds)
+    return NDCG / valid_user, HT / valid_user

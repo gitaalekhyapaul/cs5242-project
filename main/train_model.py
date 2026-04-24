@@ -13,6 +13,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+import pickle
 
 from models.sasrec import SASRec
 from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
@@ -20,24 +21,27 @@ from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
 supported_datasets = ['mobilerec', 'steamrec']
 supported_models = ['sasrec', 'tisasrec', 'tisasrec_m']
 negative_items_handling_modes = ['treat-as-positive', 'filter-negative', 'penalize-negative']
+NUM_METADATA = 5
 
 def str2bool(s):
     if s not in {'false', 'true'}:
         raise ValueError('Not a valid boolean string')
     return s == 'true'
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a SASRec baseline on prepared MobileRec sequences.")
     parser.add_argument("--dataset", type=str, default="mobilerec")
-    parser.add_argument("--data-dir", type=Path, default=Path("data/processed"))
+    parser.add_argument("--data-dir", type=Path, default=Path("data"))
 
     parser.add_argument("--model", type=str, default="sasrec")
     parser.add_argument("--negative-items-handling", type=str, default="treat-as-positive")
     parser.add_argument("--output-dir", type=Path, default=Path("data/outputs"))
 
-    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--max-len", type=int, default=50)
+    parser.add_argument('--time-span', default=256, type=int)
     parser.add_argument("--hidden-size", type=int, default=128)
     parser.add_argument("--num-blocks", type=int, default=2)
     parser.add_argument("--num-heads", type=int, default=2)
@@ -52,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument('--inference-only', default=False, type=str2bool)
+
     return parser.parse_args()
 
 
@@ -72,7 +77,31 @@ def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
 
 
 def generate_time_matrix(time_seq, time_span):
-    return []
+    size = time_seq.shape[0]
+    time_matrix = np.zeros([size, size], dtype=np.int32)
+    for i in range(size):
+        for j in range(size):
+            time_matrix[i][j] = min(abs(time_seq[i]-time_seq[j]), time_span)
+    return time_matrix
+
+
+def generate_relation_matrix(seqs, user_num, max_len, time_span):
+    relation_matrix = dict()
+    for user in tqdm(range(1, user_num+1), desc='Preparing relation matrix'):
+        time_seq = np.zeros([max_len], dtype=np.int32)
+        idx = max_len - 1
+        for i in reversed(seqs[user][:-1]):
+            time_seq[idx] = i[1]
+            idx -= 1
+            if idx == -1: break
+        relation_matrix[user] = generate_time_matrix(time_seq, time_span)
+    return relation_matrix
+
+
+def generate_combined_metadata_seq(metadata_seqs):
+    # filter empty seqs
+    filtered_metadata_seqs = [ele for ele in metadata_seqs if ele.size > 0]
+    return np.stack(filtered_metadata_seqs, axis=1)
 
 
 class TrainDataset(Dataset):
@@ -83,33 +112,63 @@ class TrainDataset(Dataset):
         num_items: int,
         seed: int,
         negative_items_handling: str,
+        relation_matrix: np.ndarray,
     ) -> None:
         self.rows: list[dict[str, object]] = []
         self.max_len = max_len
         self.num_items = num_items
         self.rng = random.Random(seed)
+        self.relation_matrix = relation_matrix
+
         for row in sequences.itertuples(index=False):
             train_sequence = list(row.train_sequence)
-            ratings = list(row.ratings)
+            timestamp_sequence = list(row.timestamps)
+
+            # numerical metadata sequences
+            ratings_sequence = list(row.ratings)
+            ratings_seq = ratings_sequence[:-1]
+            review_upvotes_sequence = list(row.review_upvotes)
+            review_upvotes_seq = review_upvotes_sequence[:-1]
+            app_num_reviews_sequence = list(row.app_num_reviews)
+            app_num_reviews_seq = app_num_reviews_sequence[:-1]
+            app_avg_rating_sequence = list(row.app_avg_rating)
+            app_avg_rating_seq = app_avg_rating_sequence[:-1]
+            app_price_sequence = list(row.app_price)
+            app_price_seq = app_price_sequence[:-1]
+
+            # category metadata sequence
+            app_category_sequence = list(row.app_category)
+            category_seq = app_category_sequence[:-1]
 
             if negative_items_handling == 'filter-negative':
                 train_sequence = [
-                    t for t, r in zip(train_sequence, ratings) if r == 1
+                    t for t, r in zip(train_sequence, ratings_sequence) if r == 1
                 ]
 
             if len(train_sequence) < 2:
                 continue
-            positive_items = train_sequence
+
             history = train_sequence[:-1]
+            time_seq = timestamp_sequence[:-1]
+            metadata_seq = generate_combined_metadata_seq([
+                ratings_seq,
+                review_upvotes_seq,
+                app_num_reviews_seq,
+                app_avg_rating_seq,
+                app_price_seq,
+            ])
+
             targets = train_sequence[1:]
-            target_ratings = ratings[1:]
+            target_ratings = ratings_sequence[1:]
+
+            positive_items = train_sequence
 
             if negative_items_handling == 'treat-as-positive':
                 pass
             elif negative_items_handling == 'penalize-negative':
                 targets = [t * r for t, r in zip(targets, target_ratings)]
                 positive_items = [
-                    t for t, r in zip(train_sequence, ratings) if r == 1
+                    t for t, r in zip(train_sequence, ratings_sequence) if r == 1
                 ]
 
             self.rows.append(
@@ -117,6 +176,9 @@ class TrainDataset(Dataset):
                     "history": history,
                     "targets": targets,
                     "seen": set(positive_items),
+                    "time_seq": time_seq,
+                    "metadata_seq": metadata_seq,
+                    "category_seq": category_seq,
                 }
             )
 
@@ -131,6 +193,12 @@ class TrainDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.rows[index]
+        time_matrix = self.relation_matrix[index]
+
+        time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
+        metadata_seq = pad_sequence(list(row["metadata_seq"]), self.max_len)
+        category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
+
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
         neg_trimmed = [self._sample_negative(row["seen"]) for _ in row["targets"]]
@@ -140,6 +208,10 @@ class TrainDataset(Dataset):
             "input_ids": torch.from_numpy(input_seq),
             "pos_ids": torch.from_numpy(pos_seq),
             "neg_ids": torch.from_numpy(neg_seq),
+            "time_matrix": torch.from_numpy(time_matrix),
+            "time_seq": torch.from_numpy(time_seq),
+            "metadata_seq": torch.from_numpy(metadata_seq),
+            "category_seq": torch.from_numpy(category_seq),
         }
 
 
@@ -242,6 +314,7 @@ def evaluate(
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
+    time_span: int,
 ) -> Metrics:
 
     model.eval()
@@ -251,6 +324,13 @@ def evaluate(
     with torch.no_grad():
         for batch in tqdm(data_loader, desc=f"eval:{split_name}", leave=False):
             input_ids = batch["input_ids"].to(device)
+
+            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
+            time_seq = batch["time_seq"].to(device)
+            metadata_seq = batch["metadata_seq"].to(device)
+            category_seq = batch["category_seq"].to(device)
+
+            time_matrix = generate_time_matrix(time_seq, time_span)
             candidate_ids = batch["candidate_ids"].to(device)
             scores = model.score_candidates(input_ids=input_ids, candidate_ids=candidate_ids)
 
@@ -276,6 +356,7 @@ def evaluate_full_ranking(
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
+    time_span: int,
 ) -> Metrics:
     model.eval()
     hit_scores: list[float] = []
@@ -285,6 +366,13 @@ def evaluate_full_ranking(
             input_ids = batch["input_ids"].to(device)
             seen_ids = batch["seen_ids"]
             targets = batch["target"].to(device)
+
+            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
+            time_seq = batch["time_seq"].to(device)
+            metadata_seq = batch["metadata_seq"].to(device)
+            category_seq = batch["category_seq"].to(device)
+
+            time_matrix = generate_time_matrix(time_seq, time_span)
 
             scores = model.score_all_items(input_ids=input_ids)
             scores[:, 0] = float("-inf")
@@ -336,6 +424,15 @@ def main() -> None:
 
     num_items = int(item_mapping["item_id"].max())
     num_categories = int(category_mapping["app_category_id"].max())
+    num_users = len(sequences)
+
+
+    try:
+        relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'rb'))
+    except:
+        relation_matrix = generate_relation_matrix(sequences, num_users, args.max_len, args.time_span)
+        pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
+
 
     train_dataset = TrainDataset(
         sequences=sequences,
@@ -343,6 +440,7 @@ def main() -> None:
         num_items=num_items,
         seed=args.seed,
         negative_item_handling=args.negative_items_handling,
+        relation_matrix=relation_matrix,
     )
     val_dataset = EvalDataset(
         sequences=sequences,
@@ -397,20 +495,27 @@ def main() -> None:
         model = TiSASRec(
             num_items=num_items,
             num_categories=num_categories,
+            num_metadata=NUM_METADATA,
             max_len=args.max_len,
+            time_span=args.time_span,
             hidden_size=args.hidden_size,
             num_blocks=args.num_blocks,
             num_heads=args.num_heads,
             dropout=args.dropout,
+            device=device,
         ).to(device)
     elif args.model == 'tisasrec':
         model = TiSASRecWithoutMetadata(
             num_items=num_items,
+            num_categories=num_categories,
+            num_metadata=args.num_metadata,
             max_len=args.max_len,
+            time_span=args.time_span,
             hidden_size=args.hidden_size,
             num_blocks=args.num_blocks,
             num_heads=args.num_heads,
             dropout=args.dropout,
+            device=device,
         ).to(device)
 
     if not model:
@@ -499,7 +604,7 @@ def main() -> None:
         scheduler.step()
 
         #* evaluate every epoch
-        val_metrics = evaluate(model, val_loader, device, "val")
+        val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
         epoch_record = {
             "epoch": epoch,
             "train_loss": float(np.mean(epoch_losses)),
@@ -513,10 +618,10 @@ def main() -> None:
             torch.save(model.state_dict(), best_checkpoint)
 
     model.load_state_dict(torch.load(best_checkpoint, map_location=device))
-    test_metrics = evaluate(model, test_loader, device, "test")
+    test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
     full_test_metrics = None
     if args.report_full_eval:
-        full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test")
+        full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
 
     metrics = {
         "config": vars(args),
