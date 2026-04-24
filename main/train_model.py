@@ -351,13 +351,6 @@ def evaluate(
     with torch.no_grad():
         for batch in tqdm(data_loader, desc=f"eval:{split_name}", leave=False):
             input_ids = batch["input_ids"].to(device)
-
-            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
-
-            time_matrix = generate_time_matrix(time_seq, time_span)
             candidate_ids = batch["candidate_ids"].to(device)
             scores = model.score_candidates(input_ids=input_ids, candidate_ids=candidate_ids)
 
@@ -393,13 +386,6 @@ def evaluate_full_ranking(
             input_ids = batch["input_ids"].to(device)
             seen_ids = batch["seen_ids"]
             targets = batch["target"].to(device)
-
-            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
-
-            time_matrix = generate_time_matrix(time_seq, time_span)
 
             scores = model.score_all_items(input_ids=input_ids)
             scores[:, 0] = float("-inf")
@@ -617,16 +603,12 @@ def main() -> None:
                 neg_ids=neg_ids,
             )
 
-            negative_item_mask = pos_ids < 0
-            pos_labels_pos = torch.ones_like(pos_logits[~negative_item_mask])
-            pos_labels_neg = torch.zeros_like(pos_logits[negative_item_mask])
-            neg_labels = torch.zeros_like(neg_logits)
-
             #* loss computation
             mask = pos_ids.ne(0)
-            pos_loss = bce(pos_logits[~negative_item_mask], pos_labels_pos)
+            pos_labels = pos_ids.gt(0).to(pos_logits.dtype)
+            neg_labels = torch.zeros_like(neg_logits)
+            pos_loss = bce(pos_logits, pos_labels)
             neg_loss = bce(neg_logits, neg_labels)
-            neg_loss += bce(neg_logits[negative_item_mask], pos_labels_neg)
             loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
 
             #* alternative loss computation
