@@ -67,6 +67,24 @@ def set_seed(seed: int) -> None:
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
+def pad_feature_sequence(
+    sequence: list[object],
+    max_len: int,
+    feature_dim: int = 1,
+) -> np.ndarray:
+    values = np.asarray(sequence, dtype=np.int64)
+    if values.size == 0:
+        return np.zeros((max_len, feature_dim), dtype=np.int64)
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
+    elif values.ndim > 2:
+        values = values.reshape(values.shape[0], -1)
+
+    trimmed = values[-max_len:, :feature_dim]
+    padded = np.zeros((max_len, feature_dim), dtype=np.int64)
+    if len(trimmed):
+        padded[-len(trimmed) :, : trimmed.shape[1]] = trimmed
+    return padded
 
 def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
     trimmed = sequence[-max_len:]
@@ -205,8 +223,7 @@ class TrainDataset(Dataset):
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
         metadata_seq = row["metadata_seq_padded"]
         # todo: pad category_seq
-        # category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
-        category_seq = np.array(list(row["category_seq"]))
+        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len)
 
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
@@ -335,11 +352,11 @@ def evaluate(
             input_ids = batch["input_ids"].to(device)
 
             # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
+            # time_seq = batch["time_seq"].to(device)
+            # metadata_seq = batch["metadata_seq"].to(device)
+            # category_seq = batch["category_seq"].to(device)
 
-            time_matrix = generate_time_matrix(time_seq, time_span)
+            # time_matrix = generate_time_matrix(time_seq, time_span)
             candidate_ids = batch["candidate_ids"].to(device)
             scores = model.score_candidates(input_ids=input_ids, candidate_ids=candidate_ids)
 
@@ -377,11 +394,11 @@ def evaluate_full_ranking(
             targets = batch["target"].to(device)
 
             # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
+            # time_seq = batch["time_seq"].to(device)
+            # metadata_seq = batch["metadata_seq"].to(device)
+            # category_seq = batch["category_seq"].to(device)
 
-            time_matrix = generate_time_matrix(time_seq, time_span)
+            # time_matrix = generate_time_matrix(time_seq, time_span)
 
             scores = model.score_all_items(input_ids=input_ids)
             scores[:, 0] = float("-inf")
@@ -457,49 +474,49 @@ def main() -> None:
     )
     print('Prepared train dataset')
 
-    print('Preparing val dataset')
-    val_dataset = EvalDataset(
-        sequences=sequences,
-        sequence_column="train_sequence",
-        target_column="validation_target",
-        num_items=num_items,
-        negative_samples=args.eval_negative_samples,
-        max_len=args.max_len,
-        seed=args.seed + 1,
-    )
-    print('Prepared val dataset')
+    # print('Preparing val dataset')
+    # val_dataset = EvalDataset(
+    #     sequences=sequences,
+    #     sequence_column="train_sequence",
+    #     target_column="validation_target",
+    #     num_items=num_items,
+    #     negative_samples=args.eval_negative_samples,
+    #     max_len=args.max_len,
+    #     seed=args.seed + 1,
+    # )
+    # print('Prepared val dataset')
 
-    print('Preparing test dataset')
-    test_dataset = EvalDataset(
-        sequences=sequences,
-        sequence_column="validation_sequence",
-        target_column="test_target",
-        num_items=num_items,
-        negative_samples=args.eval_negative_samples,
-        max_len=args.max_len,
-        seed=args.seed + 2,
-    )
-    print('Prepared test dataset')
+    # print('Preparing test dataset')
+    # test_dataset = EvalDataset(
+    #     sequences=sequences,
+    #     sequence_column="validation_sequence",
+    #     target_column="test_target",
+    #     num_items=num_items,
+    #     negative_samples=args.eval_negative_samples,
+    #     max_len=args.max_len,
+    #     seed=args.seed + 2,
+    # )
+    # print('Prepared test dataset')
 
-    print('Preparing full test dataset')
-    full_test_dataset = FullEvalDataset(
-        sequences=sequences,
-        sequence_column="validation_sequence",
-        target_column="test_target",
-        max_len=args.max_len,
-    )
-    print('Prepared full test dataset')
+    # print('Preparing full test dataset')
+    # full_test_dataset = FullEvalDataset(
+    #     sequences=sequences,
+    #     sequence_column="validation_sequence",
+    #     target_column="test_target",
+    #     max_len=args.max_len,
+    # )
+    # print('Prepared full test dataset')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
-    full_test_loader = DataLoader(
-        full_test_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=0,
-        collate_fn=collate_full_eval_batch,
-    )
+    # val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # full_test_loader = DataLoader(
+    #     full_test_dataset,
+    #     batch_size=args.batch_size,
+    #     shuffle=False,
+    #     num_workers=0,
+    #     collate_fn=collate_full_eval_batch,
+    # )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -600,16 +617,25 @@ def main() -> None:
             )
 
             negative_item_mask = pos_ids < 0
+            pos_labels = torch.ones_like(pos_logits)
             pos_labels_pos = torch.ones_like(pos_logits[~negative_item_mask])
             pos_labels_neg = torch.zeros_like(pos_logits[negative_item_mask])
             neg_labels = torch.zeros_like(neg_logits)
 
-            #* loss computation
+            #todo: rethink loss
+
+            # temp loss
             mask = pos_ids.ne(0)
-            pos_loss = bce(pos_logits[~negative_item_mask], pos_labels_pos)
+            pos_loss = bce(pos_logits, pos_labels)
             neg_loss = bce(neg_logits, neg_labels)
-            neg_loss += bce(neg_logits[negative_item_mask], pos_labels_neg)
             loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
+
+            #* loss computation
+            # mask = pos_ids.ne(0)
+            # pos_loss = bce(pos_logits, pos_labels_pos) * (~negative_item_mask)
+            # neg_loss = bce(neg_logits, neg_labels)
+            # neg_loss += bce(neg_logits, pos_labels_neg) * negative_item_mask
+            # loss = ((pos_loss + neg_loss) * mask).sum() / mask.sum().clamp(min=1)
 
             #* alternative loss computation
             # mask = pos_ids != 0 # mask padding items
@@ -627,24 +653,24 @@ def main() -> None:
         scheduler.step()
 
         #* evaluate every epoch
-        val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
-        epoch_record = {
-            "epoch": epoch,
-            "train_loss": float(np.mean(epoch_losses)),
-            "val_hr_at_10": val_metrics.hr_at_10,
-            "val_ndcg_at_10": val_metrics.ndcg_at_10,
-        }
+        # val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
+        # epoch_record = {
+        #     "epoch": epoch,
+        #     "train_loss": float(np.mean(epoch_losses)),
+        #     "val_hr_at_10": val_metrics.hr_at_10,
+        #     "val_ndcg_at_10": val_metrics.ndcg_at_10,
+        # }
 
-        history.append(epoch_record)
-        if val_metrics.hr_at_10 > best_val_hr:
-            best_val_hr = val_metrics.hr_at_10
-            torch.save(model.state_dict(), best_checkpoint)
+        # history.append(epoch_record)
+        # if val_metrics.hr_at_10 > best_val_hr:
+        #     best_val_hr = val_metrics.hr_at_10
+        #     torch.save(model.state_dict(), best_checkpoint)
 
-    model.load_state_dict(torch.load(best_checkpoint, map_location=device))
-    test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
-    full_test_metrics = None
-    if args.report_full_eval:
-        full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
+    # model.load_state_dict(torch.load(best_checkpoint, map_location=device))
+    # test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
+    # full_test_metrics = None
+    # if args.report_full_eval:
+    #     full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
 
     metrics = {
         "config": vars(args),
