@@ -102,8 +102,8 @@ def generate_relation_matrix(seqs, max_len, time_span):
 
 
 def generate_combined_metadata_seq(metadata_seqs):
-    # filter empty seqs
-    filtered_metadata_seqs = [ele for ele in metadata_seqs if ele.size > 0]
+    # filter empty metadata seqs
+    filtered_metadata_seqs = [ele for ele in metadata_seqs if len(ele) > 0]
     return np.stack(filtered_metadata_seqs, axis=1)
 
 
@@ -129,15 +129,15 @@ class TrainDataset(Dataset):
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
-            ratings_seq = ratings_sequence[:-1]
+            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
             review_upvotes_sequence = list(row.review_upvotes)
-            review_upvotes_seq = review_upvotes_sequence[:-1]
+            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
             app_num_reviews_sequence = list(row.app_num_reviews)
-            app_num_reviews_seq = app_num_reviews_sequence[:-1]
+            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
             app_avg_rating_sequence = list(row.app_avg_rating)
-            app_avg_rating_seq = app_avg_rating_sequence[:-1]
+            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
             app_price_sequence = list(row.app_price)
-            app_price_seq = app_price_sequence[:-1]
+            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
 
             # category metadata sequence
             app_category_sequence = list(row.app_category)
@@ -153,12 +153,12 @@ class TrainDataset(Dataset):
 
             history = train_sequence[:-1]
             time_seq = timestamps_sequence[:-1]
-            metadata_seq = generate_combined_metadata_seq([
-                ratings_seq,
-                review_upvotes_seq,
-                app_num_reviews_seq,
-                app_avg_rating_seq,
-                app_price_seq,
+            metadata_seq_padded = generate_combined_metadata_seq([
+                ratings_seq_padded,
+                review_upvotes_seq_padded,
+                app_num_reviews_seq_padded,
+                app_avg_rating_seq_padded,
+                app_price_seq_padded,
             ])
 
             targets = train_sequence[1:]
@@ -180,7 +180,7 @@ class TrainDataset(Dataset):
                     "targets": targets,
                     "seen": set(positive_items),
                     "time_seq": time_seq,
-                    "metadata_seq": metadata_seq,
+                    "metadata_seq_padded": metadata_seq_padded,
                     "category_seq": category_seq,
                 }
             )
@@ -203,8 +203,10 @@ class TrainDataset(Dataset):
             time_matrix = []
 
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
-        metadata_seq = pad_sequence(list(row["metadata_seq"]), self.max_len)
-        category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
+        metadata_seq = row["metadata_seq_padded"]
+        # todo: pad category_seq
+        # category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
+        category_seq = list(row["category_seq"])
 
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
@@ -248,7 +250,7 @@ class EvalDataset(Dataset):
             while len(negatives) < negative_samples:
                 sampled = rng.randint(1, num_items)
                 if sampled not in seen and sampled not in negatives:
-                    negatives.append(sampled)
+                    negatives.add(sampled)
             candidates = [target] + list(negatives)
             self.rows.append(
                 {
@@ -444,6 +446,7 @@ def main() -> None:
 
     print(f'relation matrix enabled: {bool(relation_matrix)}')
 
+    print('Preparing train dataset')
     train_dataset = TrainDataset(
         sequences=sequences,
         max_len=args.max_len,
@@ -452,6 +455,9 @@ def main() -> None:
         negative_items_handling=args.negative_items_handling,
         relation_matrix=relation_matrix,
     )
+    print('Prepared train dataset')
+
+    print('Preparing val dataset')
     val_dataset = EvalDataset(
         sequences=sequences,
         sequence_column="train_sequence",
@@ -461,6 +467,9 @@ def main() -> None:
         max_len=args.max_len,
         seed=args.seed + 1,
     )
+    print('Prepared val dataset')
+
+    print('Preparing test dataset')
     test_dataset = EvalDataset(
         sequences=sequences,
         sequence_column="validation_sequence",
@@ -470,12 +479,16 @@ def main() -> None:
         max_len=args.max_len,
         seed=args.seed + 2,
     )
+    print('Prepared test dataset')
+
+    print('Preparing full test dataset')
     full_test_dataset = FullEvalDataset(
         sequences=sequences,
         sequence_column="validation_sequence",
         target_column="test_target",
         max_len=args.max_len,
     )
+    print('Prepared full test dataset')
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
