@@ -131,6 +131,7 @@ def generate_combined_metadata_seq(metadata_seqs):
 class TrainDataset(Dataset):
     def __init__(
         self,
+        *,
         sequences: pd.DataFrame,
         max_len: int,
         num_items: int,
@@ -248,6 +249,7 @@ class TrainDataset(Dataset):
 class EvalDataset(Dataset):
     def __init__(
         self,
+        *,
         sequences: pd.DataFrame,
         sequence_column: str,
         target_column: str,
@@ -258,11 +260,41 @@ class EvalDataset(Dataset):
         seed: int,
     ) -> None:
         self.rows: list[dict[str, object]] = []
+        self.num_categories = num_categories
+        self.max_len = max_len
+
         rng = random.Random(seed)
+
         for row in sequences.itertuples(index=False):
             sequence = list(getattr(row, sequence_column))
+            timestamps_sequence = list(row.timestamps)
+
+            # numerical metadata sequences
+            ratings_sequence = list(row.ratings)
+            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
+            review_upvotes_sequence = list(row.review_upvotes)
+            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
+            app_num_reviews_sequence = list(row.app_num_reviews)
+            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
+            app_avg_rating_sequence = list(row.app_avg_rating)
+            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
+            app_price_sequence = list(row.app_price)
+            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
+
+            # category metadata sequence
+            app_category_sequence = list(row.app_category)
+            category_seq = app_category_sequence[:-1]
+
+            time_seq = timestamps_sequence[:-1]
+            metadata_seq_padded = generate_combined_metadata_seq([
+                ratings_seq_padded,
+                review_upvotes_seq_padded,
+                app_num_reviews_seq_padded,
+                app_avg_rating_seq_padded,
+                app_price_seq_padded,
+            ])
+
             target = int(getattr(row, target_column))
-            targets = sequence[1:]
 
             seen = set(sequence)
 
@@ -279,6 +311,9 @@ class EvalDataset(Dataset):
                     "input_ids": pad_sequence(sequence, max_len),
                     "candidate_ids": np.asarray(candidates, dtype=np.int64),
                     "target": 0,
+                    "time_seq": time_seq,
+                    "metadata_seq_padded": metadata_seq_padded,
+                    "category_seq": category_seq,
                 }
             )
 
@@ -287,30 +322,73 @@ class EvalDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.rows[index]
+
+        time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
+        metadata_seq = row["metadata_seq_padded"]
+        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len, self.num_categories)
+
         return {
             "input_ids": torch.from_numpy(row["input_ids"]),
             "candidate_ids": torch.from_numpy(row["candidate_ids"]),
             "target": torch.tensor(row["target"], dtype=torch.long),
+            "time_seq": torch.from_numpy(time_seq),
+            "metadata_seq": torch.from_numpy(metadata_seq),
+            "category_seq": torch.from_numpy(category_seq),
         }
 
 
 class FullEvalDataset(Dataset):
     def __init__(
         self,
+        *,
         sequences: pd.DataFrame,
         sequence_column: str,
         target_column: str,
         max_len: int,
+        num_categories: int,
     ) -> None:
         self.rows: list[dict[str, object]] = []
+        self.max_len = max_len
+        self.num_categories = num_categories
+
         for row in sequences.itertuples(index=False):
             sequence = list(getattr(row, sequence_column))
+            timestamps_sequence = list(row.timestamps)
+
+            # numerical metadata sequences
+            ratings_sequence = list(row.ratings)
+            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
+            review_upvotes_sequence = list(row.review_upvotes)
+            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
+            app_num_reviews_sequence = list(row.app_num_reviews)
+            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
+            app_avg_rating_sequence = list(row.app_avg_rating)
+            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
+            app_price_sequence = list(row.app_price)
+            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
+
+            # category metadata sequence
+            app_category_sequence = list(row.app_category)
+            category_seq = app_category_sequence[:-1]
+
+            time_seq = timestamps_sequence[:-1]
+            metadata_seq_padded = generate_combined_metadata_seq([
+                ratings_seq_padded,
+                review_upvotes_seq_padded,
+                app_num_reviews_seq_padded,
+                app_avg_rating_seq_padded,
+                app_price_seq_padded,
+            ])
+
             target = int(getattr(row, target_column))
             self.rows.append(
                 {
                     "input_ids": pad_sequence(sequence, max_len),
                     "seen_ids": np.asarray(sorted(set(sequence)), dtype=np.int64),
                     "target": target,
+                    "time_seq": time_seq,
+                    "metadata_seq_padded": metadata_seq_padded,
+                    "category_seq": category_seq,
                 }
             )
 
@@ -319,10 +397,18 @@ class FullEvalDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.rows[index]
+
+        time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
+        metadata_seq = row["metadata_seq_padded"]
+        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len, self.num_categories)
+
         return {
             "input_ids": torch.from_numpy(row["input_ids"]),
             "seen_ids": torch.from_numpy(row["seen_ids"]),
             "target": torch.tensor(row["target"], dtype=torch.long),
+            "time_seq": torch.from_numpy(time_seq),
+            "metadata_seq": torch.from_numpy(metadata_seq),
+            "category_seq": torch.from_numpy(category_seq),
         }
 
 
@@ -357,13 +443,19 @@ def evaluate(
             input_ids = batch["input_ids"].to(device)
 
             # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            # time_seq = batch["time_seq"].to(device)
-            # metadata_seq = batch["metadata_seq"].to(device)
-            # category_seq = batch["category_seq"].to(device)
+            time_seq = batch["time_seq"].to(device)
+            metadata_seq = batch["metadata_seq"].to(device)
+            category_seq = batch["category_seq"].to(device)
 
-            # time_matrix = generate_time_matrix(time_seq, time_span)
+            time_matrix = generate_time_matrix(time_seq, time_span)
             candidate_ids = batch["candidate_ids"].to(device)
-            scores = model.score_candidates(input_ids=input_ids, candidate_ids=candidate_ids)
+            scores = model.score_candidates(
+                input_ids=input_ids,
+                candidate_ids=candidate_ids,
+                time_matrix=time_matrix,
+                metadata_seq=metadata_seq,
+                category_seq=category_seq,
+            )
 
             rankings = torch.argsort(scores, dim=1, descending=True)
             top_k = rankings[:, :10]
@@ -399,13 +491,18 @@ def evaluate_full_ranking(
             targets = batch["target"].to(device)
 
             # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            # time_seq = batch["time_seq"].to(device)
-            # metadata_seq = batch["metadata_seq"].to(device)
-            # category_seq = batch["category_seq"].to(device)
+            time_seq = batch["time_seq"].to(device)
+            metadata_seq = batch["metadata_seq"].to(device)
+            category_seq = batch["category_seq"].to(device)
 
-            # time_matrix = generate_time_matrix(time_seq, time_span)
+            time_matrix = generate_time_matrix(time_seq, time_span)
 
-            scores = model.score_all_items(input_ids=input_ids)
+            scores = model.score_all_items(
+                input_ids=input_ids,
+                metadata_seq=metadata_seq,
+                category_seq=category_seq,
+                time_matrix=time_matrix,
+            )
             scores[:, 0] = float("-inf")
             for row_idx in range(scores.size(0)):
                 row_seen = seen_ids[row_idx]
@@ -513,6 +610,7 @@ def main() -> None:
             sequence_column="validation_sequence",
             target_column="test_target",
             max_len=args.max_len,
+            num_categories=num_categories
         )
         print('Prepared full test dataset')
 

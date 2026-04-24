@@ -96,6 +96,7 @@ class SASRec(nn.Module):
 
     def training_logits(
         self,
+        *,
         input_ids: torch.Tensor,
         pos_ids: torch.Tensor,
         neg_ids: torch.Tensor,
@@ -109,6 +110,7 @@ class SASRec(nn.Module):
 
     def score_candidates(
         self,
+        *,
         input_ids: torch.Tensor,
         candidate_ids: torch.Tensor,
     ) -> torch.Tensor:
@@ -121,7 +123,11 @@ class SASRec(nn.Module):
         lengths = input_ids.ne(0).sum(dim=1).clamp(min=1) - 1
         return encoded[torch.arange(encoded.size(0), device=input_ids.device), lengths]
 
-    def score_all_items(self, input_ids: torch.Tensor) -> torch.Tensor:
+    def score_all_items(
+        self,
+        *,
+        input_ids: torch.Tensor,
+    ) -> torch.Tensor:
         user_repr = self.user_representation(input_ids)
         all_item_emb = self.item_embedding.weight
         return user_repr @ all_item_emb.transpose(0, 1)
