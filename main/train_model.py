@@ -200,13 +200,13 @@ class TrainDataset(Dataset):
         if self.relation_matrix:
             time_matrix = self.relation_matrix[index]
         else:
-            time_matrix = []
+            time_matrix = np.array([])
 
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
         metadata_seq = row["metadata_seq_padded"]
         # todo: pad category_seq
         # category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
-        category_seq = list(row["category_seq"])
+        category_seq = np.array(list(row["category_seq"]))
 
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
