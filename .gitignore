@@ -174,7 +174,7 @@ outputs/
 *.pkl
 
 # Common data files (uncomment if you want all ignored by default)
-# data/
+data/
 # datasets/
 # *.csv
 # *.tsv
