@@ -76,6 +76,26 @@ def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
     return padded
 
 
+def pad_feature_sequence(
+    sequence: list[object],
+    max_len: int,
+    feature_dim: int = 1,
+) -> np.ndarray:
+    values = np.asarray(sequence, dtype=np.int64)
+    if values.size == 0:
+        return np.zeros((max_len, feature_dim), dtype=np.int64)
+    if values.ndim == 1:
+        values = values.reshape(-1, 1)
+    elif values.ndim > 2:
+        values = values.reshape(values.shape[0], -1)
+
+    trimmed = values[-max_len:, :feature_dim]
+    padded = np.zeros((max_len, feature_dim), dtype=np.int64)
+    if len(trimmed):
+        padded[-len(trimmed) :, : trimmed.shape[1]] = trimmed
+    return padded
+
+
 def generate_time_matrix(time_seq, time_span):
     size = time_seq.shape[0]
     time_matrix = np.zeros([size, size], dtype=np.int32)
@@ -204,9 +224,7 @@ class TrainDataset(Dataset):
 
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
         metadata_seq = row["metadata_seq_padded"]
-        # todo: pad category_seq
-        # category_seq = pad_sequence(list(row["category_seq"]), self.max_len)
-        category_seq = np.array(list(row["category_seq"]))
+        category_seq = pad_feature_sequence(list(row["category_seq"]), self.max_len)
 
         input_seq = pad_sequence(list(row["history"]), self.max_len)
         pos_seq = pad_sequence(list(row["targets"]), self.max_len)
