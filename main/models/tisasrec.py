@@ -136,7 +136,7 @@ class TiSASRec(torch.nn.Module):
         self.time_matrix_V_emb = torch.nn.Embedding(time_span+1, hidden_size)
 
         #* metadata embedding injection
-        self.metadata_cat_emb = torch.nn.EmbeddingBag(num_categories, hidden_size // 2)
+        self.metadata_cat_emb = torch.nn.EmbeddingBag(num_categories, hidden_size // 2, padding_idx=0)
         self.metadata_num_emb = torch.nn.Linear(num_metadata, hidden_size // 2)
         self.fusion = torch.nn.Linear(hidden_size + 2 * (hidden_size // 2), hidden_size)
         self.emb_layernorm = torch.nn.LayerNorm(hidden_size)
