@@ -85,16 +85,19 @@ def generate_time_matrix(time_seq, time_span):
     return time_matrix
 
 
-def generate_relation_matrix(seqs, user_num, max_len, time_span):
+def generate_relation_matrix(seqs, max_len, time_span):
     relation_matrix = dict()
-    for user in tqdm(range(1, user_num+1), desc='Preparing relation matrix'):
+    for row in seqs.itertuples():
+        print(f'{row.Index} / {len(seqs)}')
+        timestamps_sequence = list(row.timestamps)
         time_seq = np.zeros([max_len], dtype=np.int32)
         idx = max_len - 1
-        for i in reversed(seqs[user][:-1]):
-            time_seq[idx] = i[1]
+
+        for ele in reversed(timestamps_sequence[:-1]):
+            time_seq[idx] = ele
             idx -= 1
             if idx == -1: break
-        relation_matrix[user] = generate_time_matrix(time_seq, time_span)
+        relation_matrix[row.Index] = generate_time_matrix(time_seq, time_span)
     return relation_matrix
 
 
@@ -122,7 +125,7 @@ class TrainDataset(Dataset):
 
         for row in sequences.itertuples(index=False):
             train_sequence = list(row.train_sequence)
-            timestamp_sequence = list(row.timestamps)
+            timestamps_sequence = list(row.timestamps)
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
@@ -149,7 +152,7 @@ class TrainDataset(Dataset):
                 continue
 
             history = train_sequence[:-1]
-            time_seq = timestamp_sequence[:-1]
+            time_seq = timestamps_sequence[:-1]
             metadata_seq = generate_combined_metadata_seq([
                 ratings_seq,
                 review_upvotes_seq,
@@ -420,7 +423,7 @@ def main() -> None:
 
     sequences = pd.read_parquet(args.data_dir / args.dataset / "final_sequences.parquet")
     item_mapping = pd.read_parquet(args.data_dir / args.dataset / "final_item_mapping.parquet")
-    category_mapping = pd.read_parquet(args.data_dir / args.dataset / "final_app_category_mapping.parquet")
+    category_mapping = pd.read_parquet(args.data_dir / args.dataset / "final_app_category.parquet")
 
     num_items = int(item_mapping["item_id"].max())
     num_categories = int(category_mapping["app_category_id"].max())
@@ -430,7 +433,7 @@ def main() -> None:
     try:
         relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'rb'))
     except:
-        relation_matrix = generate_relation_matrix(sequences, num_users, args.max_len, args.time_span)
+        relation_matrix = generate_relation_matrix(sequences, args.max_len, args.time_span)
         pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
 
 
