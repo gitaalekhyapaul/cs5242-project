@@ -559,7 +559,7 @@ def main() -> None:
         model = TiSASRecWithoutMetadata(
             num_items=num_items,
             num_categories=num_categories,
-            num_metadata=args.num_metadata,
+            num_metadata=NUM_METADATA,
             max_len=args.max_len,
             time_span=args.time_span,
             hidden_size=args.hidden_size,
