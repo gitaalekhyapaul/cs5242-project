@@ -196,7 +196,11 @@ class TrainDataset(Dataset):
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.rows[index]
-        time_matrix = self.relation_matrix[index]
+
+        if self.relation_matrix:
+            time_matrix = self.relation_matrix[index]
+        else:
+            time_matrix = []
 
         time_seq = pad_sequence(list(row["time_seq"]), self.max_len)
         metadata_seq = pad_sequence(list(row["metadata_seq"]), self.max_len)
@@ -429,12 +433,12 @@ def main() -> None:
     num_categories = int(category_mapping["app_category_id"].max())
     num_users = len(sequences)
 
-
-    try:
-        relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'rb'))
-    except:
-        relation_matrix = generate_relation_matrix(sequences, args.max_len, args.time_span)
-        pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
+    if args.model in ['tisasrec_m', 'tisasrec']:
+        try:
+            relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'rb'))
+        except:
+            relation_matrix = generate_relation_matrix(sequences, args.max_len, args.time_span)
+            pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
 
 
     train_dataset = TrainDataset(
