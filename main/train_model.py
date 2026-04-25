@@ -4,6 +4,8 @@ import argparse
 import json
 import math
 import random
+import csv
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,6 +49,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-heads", type=int, default=2)
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--steplr_gamma", type=float, default=0.95)
     parser.add_argument("--weight-decay", type=float, default=1e-5)
     parser.add_argument("--eval-negative-samples", type=int, default=100)
     parser.add_argument(
@@ -690,10 +693,38 @@ def main() -> None:
         except:
             pass # just ignore those failed init layers
 
-    best_val_hr = -1.0
-    best_checkpoint = args.output_dir / args.model / args.negative_items_handling / "best_model.pt"
+    history_filepath = args.output_dir / args.model / args.negative_items_handling / "history.csv"
 
-    if best_checkpoint.exists():
+    history: list[dict[str, float | int]] = []
+    history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr']
+
+    # Create file and write header if it doesn't exist
+    if not history_filepath.exists():
+        with open(history_filepath, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(history_headers)
+
+    best_val_hr = -1.0
+    optimizer_lr = args.lr
+
+    if history_filepath.exists():
+        df = pd.read_csv(history_filepath)
+        if not df.empty:
+            # Get the 'best_val_hr' and 'lr' values from the very last row
+            best_val_hr = df['best_val_hr'].iloc[-1]
+            optimizer_lr = df['lr'].iloc[-1]
+            print(f"Resuming from checkpoint: lr: {optimizer_lr}, best_val_hr: {best_val_hr}")
+
+    best_checkpoint = args.output_dir / args.model / args.negative_items_handling / "best_model.pt"
+    current_checkpoint = args.output_dir / args.model / args.negative_items_handling / "current_model.pt"
+
+    if current_checkpoint.exists():
+        try:
+            model.load_state_dict(torch.load(current_checkpoint, map_location=device))
+        except:
+            print('failed loading state_dicts, pls check file path: ', end="")
+            print(current_checkpoint)
+    elif best_checkpoint.exists():
         try:
             model.load_state_dict(torch.load(best_checkpoint, map_location=device))
         except:
@@ -702,17 +733,15 @@ def main() -> None:
 
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=args.lr,
+        lr=optimizer_lr,
         betas=(0.9, 0.98), #* forget the past more quickly than default (0.9, 0.999)
         weight_decay=args.weight_decay,
         # eps=1e-9, #uncomment if exploding loss/early plateau
     )
 
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=args.steplr_gamma)
 
     bce = nn.BCEWithLogitsLoss(reduction="none")
-
-    history: list[dict[str, float | int]] = []
 
     for epoch in range(1, args.epochs + 1):
         if args.inference_only: break # skip training if in inference mode
@@ -768,27 +797,48 @@ def main() -> None:
 
         #* evaluate every epoch
         val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
+
+        train_loss = float(np.mean(epoch_losses))
+        val_hr = val_metrics.hr_at_10
+        val_ndcg = val_metrics.ndcg_at_10
+        current_lr = scheduler.get_last_lr()[0]
+
         epoch_record = {
             "epoch": epoch,
-            "train_loss": float(np.mean(epoch_losses)),
-            "val_hr_at_10": val_metrics.hr_at_10,
-            "val_ndcg_at_10": val_metrics.ndcg_at_10,
+            "train_loss": train_loss,
+            "val_hr_at_10": val_hr,
+            "val_ndcg_at_10": val_ndcg,
         }
+
+        with open(history_filepath, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                train_loss,
+                val_hr,
+                val_ndcg,
+                current_lr,
+                best_val_hr,
+            ])
 
         history.append(epoch_record)
         if val_metrics.hr_at_10 > best_val_hr:
             best_val_hr = val_metrics.hr_at_10
             torch.save(model.state_dict(), best_checkpoint)
 
-    model.load_state_dict(torch.load(best_checkpoint, map_location=device))
+        torch.save(model.state_dict(), current_checkpoint)
 
     if args.training_only:
         return
+
+    print('running test evaluation on best model')
+    model.load_state_dict(torch.load(best_checkpoint, map_location=device))
 
     test_metrics = evaluate(model, test_loader, device, "test", time_span=args.time_span)
     full_test_metrics = None
     if args.report_full_eval:
         full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
+
+    metrics_filepath = args.output_dir / args.model / args.negative_items_handling / "metrics.json"
 
     metrics = {
         "config": vars(args),
@@ -825,7 +875,7 @@ def main() -> None:
     if full_test_metrics is not None:
         metrics["full_test_hr_at_10"] = full_test_metrics.hr_at_10
         metrics["full_test_ndcg_at_10"] = full_test_metrics.ndcg_at_10
-    (args.output_dir / args.model / args.negative_items_handling / "metrics.json").write_text(json.dumps(metrics, indent=2, default=str))
+    metrics_filepath.write_text(json.dumps(metrics, indent=2, default=str))
     print(json.dumps(metrics, indent=2, default=str))
 
 
