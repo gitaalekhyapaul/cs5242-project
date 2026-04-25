@@ -287,6 +287,28 @@ The run directory keeps the same training artifacts as the normal trainer:
 - `metrics.json`
 - `transfer_load_report.json`
 
+## TiSASRec Time Handling
+
+For `tisasrec` and `tisasrec_m`, the trainer converts each user's raw
+timestamps into personalized time ids before it builds relation matrices. For
+each user, it finds the shortest nonzero adjacent timestamp gap. It then maps
+each timestamp to:
+
+```text
+round((timestamp - user_min_timestamp) / user_min_nonzero_gap) + 1
+```
+
+If every timestamp in a user sequence is equal, the scale is `1`.
+
+The relation matrix cache uses the personalized mode in its filename:
+
+```text
+relation_matrix_<dataset>_<max_len>_<time_span>_personalized.pickle
+```
+
+Older raw timestamp caches without the `_personalized` suffix are ignored by
+the trainer.
+
 ## Baseline Assumptions
 
 The current baseline intentionally keeps the setup simple:
@@ -411,7 +433,7 @@ Operational note:
 ## Next Steps
 
 After the baseline is stable, the most natural improvements are:
-- add timestamp-aware features for a TiSASRec-style extension
+- run TiSASRec experiments with personalized time intervals
 - compare all-review interactions vs filtered positive interactions such as `rating >= 4`
 - add app metadata embeddings from category or text fields
 - standardize experiment configs and logging

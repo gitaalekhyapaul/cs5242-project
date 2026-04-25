@@ -19,12 +19,14 @@ from train_model import (
     EvalDataset,
     FullEvalDataset,
     NUM_METADATA,
+    TIME_NORMALIZATION,
     TrainDataset,
     collate_full_eval_batch,
     evaluate,
     evaluate_full_ranking,
     generate_relation_matrix,
     generate_time_matrix_batch,
+    relation_matrix_cache_path,
     set_seed,
     str2bool,
 )
@@ -250,7 +252,12 @@ def load_relation_matrix(
     max_len: int,
     time_span: int,
 ) -> dict[int, np.ndarray]:
-    relation_matrix_path = data_dir / f"relation_matrix_{target_dataset}_{max_len}_{time_span}.pickle"
+    relation_matrix_path = relation_matrix_cache_path(
+        data_dir,
+        target_dataset,
+        max_len,
+        time_span,
+    )
     try:
         with relation_matrix_path.open("rb") as fh:
             return pickle.load(fh)
@@ -595,8 +602,11 @@ def main() -> None:
             time_span=args.time_span,
         )
 
+    config = vars(args).copy()
+    config["time_normalization"] = TIME_NORMALIZATION
+
     metrics = {
-        "config": vars(args),
+        "config": config,
         "transfer": transfer_metadata,
         "evaluation_protocol": {
             "seed": args.seed,
