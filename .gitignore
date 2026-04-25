@@ -185,3 +185,5 @@ data/
 steam-crawler/data/*.parquet
 processed/
 raw/
+
+!main/metadata/*
