@@ -86,6 +86,7 @@ def parse_args() -> argparse.Namespace:
         help="Also report full-ranking test metrics against the entire item set.",
     )
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--inference-only", default=False, type=str2bool)
     parser.add_argument("--training-only", default=False, type=str2bool)
     parser.add_argument("--resume", default=True, type=str2bool)
 
@@ -477,6 +478,10 @@ def main() -> None:
     history: list[dict[str, float | int]] = []
 
     for epoch in range(1, args.epochs + 1):
+        if args.inference_only:
+            print("Inference-only run requested. Skipping transfer fine-tuning.")
+            break
+
         model.train()
         epoch_losses: list[float] = []
         progress = tqdm(train_loader, desc=f"train:{epoch}", leave=False)
