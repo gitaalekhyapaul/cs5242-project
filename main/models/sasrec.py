@@ -100,6 +100,9 @@ class SASRec(nn.Module):
         input_ids: torch.Tensor,
         pos_ids: torch.Tensor,
         neg_ids: torch.Tensor,
+        time_matrix,
+        metadata_seq,
+        category_seq,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         encoded = self.encode(input_ids)
         pos_emb = self.item_embedding(pos_ids)
@@ -113,6 +116,9 @@ class SASRec(nn.Module):
         *,
         input_ids: torch.Tensor,
         candidate_ids: torch.Tensor,
+        time_matrix,
+        metadata_seq,
+        category_seq,
     ) -> torch.Tensor:
         user_repr = self.user_representation(input_ids)
         candidate_emb = self.item_embedding(candidate_ids)
@@ -127,6 +133,9 @@ class SASRec(nn.Module):
         self,
         *,
         input_ids: torch.Tensor,
+        metadata_seq,
+        category_seq,
+        time_matrix,
     ) -> torch.Tensor:
         user_repr = self.user_representation(input_ids)
         all_item_emb = self.item_embedding.weight
