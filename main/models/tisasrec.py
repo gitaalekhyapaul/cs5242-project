@@ -177,6 +177,36 @@ class TiSASRec(torch.nn.Module):
 
         self.clear_padding_item_embedding()
 
+    def _to_long_tensor(self, values):
+        if isinstance(values, torch.Tensor):
+            return values.to(device=self.device, dtype=torch.long)
+        return torch.as_tensor(values, device=self.device, dtype=torch.long)
+
+    def _to_float_tensor(self, values):
+        if isinstance(values, torch.Tensor):
+            return values.to(device=self.device, dtype=torch.float32)
+        return torch.as_tensor(values, device=self.device, dtype=torch.float32)
+
+    def _category_vecs(self, category_seq):
+        category_seq = self._to_long_tensor(category_seq)
+        if category_seq.dim() == 3:
+            batch_size, seq_len, bag_len = category_seq.shape
+            return self.metadata_cat_emb(category_seq.reshape(batch_size * seq_len, bag_len)).reshape(
+                batch_size,
+                seq_len,
+                -1,
+            )
+        if category_seq.dim() == 2:
+            batch_size, seq_len = category_seq.shape
+            return self.metadata_cat_emb(category_seq.reshape(batch_size * seq_len, 1)).reshape(
+                batch_size,
+                seq_len,
+                -1,
+            )
+        if category_seq.dim() == 1:
+            return self.metadata_cat_emb(category_seq.unsqueeze(1))
+        raise ValueError(f"Unsupported category_seq shape: {tuple(category_seq.shape)}")
+
     def clear_padding_item_embedding(self):
         if self.item_emb.padding_idx is not None:
             with torch.no_grad():
@@ -190,8 +220,11 @@ class TiSASRec(torch.nn.Module):
         category_seq,
         embed_only=False,
     ):
+        input_ids = self._to_long_tensor(input_ids)
+        metadata_seq = self._to_float_tensor(metadata_seq)
+
         item_vecs = self.item_emb(input_ids)
-        metadata_cat_vecs = self.metadata_cat_emb(category_seq)
+        metadata_cat_vecs = self._category_vecs(category_seq)
         metadata_num_vecs = self.metadata_num_emb(metadata_seq)
 
         item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
@@ -220,24 +253,24 @@ class TiSASRec(torch.nn.Module):
         #! less efficient
         # positions = np.tile(np.array(range(seq_len)), [batch_size, 1])
 
+        input_ids = self._to_long_tensor(input_ids)
+        time_matrix = self._to_long_tensor(time_matrix)
+
         batch_size = input_ids.shape[0]
         seq_len = input_ids.shape[1]
-        positions = torch.arange(seq_len).expand(batch_size, seq_len)
-
-        # positions = torch.LongTensor(positions).to(self.device)
+        positions = torch.arange(seq_len, device=self.device).expand(batch_size, seq_len)
         abs_pos_K = self.abs_pos_K_emb(positions)
         abs_pos_V = self.abs_pos_V_emb(positions)
         abs_pos_K = self.abs_pos_K_emb_dropout(abs_pos_K)
         abs_pos_V = self.abs_pos_V_emb_dropout(abs_pos_V)
 
-        # time_matrix = torch.LongTensor(time_matrix).to(self.device)
         time_matrix_K = self.time_matrix_K_emb(time_matrix)
         time_matrix_V = self.time_matrix_V_emb(time_matrix)
         time_matrix_K = self.time_matrix_K_dropout(time_matrix_K)
         time_matrix_V = self.time_matrix_V_dropout(time_matrix_V)
 
         # mask padding items (0th item in vocabulary) in input_ids
-        timeline_mask = torch.BoolTensor(input_ids == 0).to(self.device)
+        timeline_mask = input_ids.eq(0)
         vecs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
 
         tl = vecs.shape[1] # time dim len for enforce causality
@@ -303,8 +336,8 @@ class TiSASRec(torch.nn.Module):
             time_matrix=time_matrix,
         )
 
-        pos_embs = self.seq2vec(pos_ids, metadata_seq, category_seq, embed_only=True)
-        neg_embs = self.seq2vec(neg_ids, metadata_seq, category_seq, embed_only=True)
+        pos_embs = self.item_emb(self._to_long_tensor(pos_ids))
+        neg_embs = self.item_emb(self._to_long_tensor(neg_ids))
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
@@ -321,6 +354,7 @@ class TiSASRec(torch.nn.Module):
         category_seq,
         time_matrix,
     ) -> torch.Tensor:
+        input_ids = self._to_long_tensor(input_ids)
         encoded = self.encode(
             input_ids=input_ids,
             metadata_seq=metadata_seq,
@@ -346,12 +380,7 @@ class TiSASRec(torch.nn.Module):
             time_matrix=time_matrix,
         )
 
-        candidate_emb = self.seq2vec(
-            input_ids=candidate_ids,
-            metadata_seq=metadata_seq,
-            category_seq=category_seq,
-            embed_only=True,
-        )
+        candidate_emb = self.item_emb(self._to_long_tensor(candidate_ids))
 
         return torch.einsum("bd,bkd->bk", user_repr, candidate_emb)
 
@@ -369,7 +398,7 @@ class TiSASRec(torch.nn.Module):
             category_seq=category_seq,
             time_matrix=time_matrix,
         )
-        all_item_emb = self.item_embedding.weight
+        all_item_emb = self.item_emb.weight
         return user_repr @ all_item_emb.transpose(0, 1)
 
 
@@ -377,8 +406,15 @@ class TiSASRecWithoutMetadata(TiSASRec):
     def __init__(self, *user_args, **kwargs):
         super(TiSASRecWithoutMetadata, self).__init__(*user_args, **kwargs)
 
-    def seq2vec(self, seq, embed_only=False):
-        vecs = self.item_emb(seq)
+    def seq2vec(
+        self,
+        *,
+        input_ids,
+        metadata_seq=None,
+        category_seq=None,
+        embed_only=False,
+    ):
+        vecs = self.item_emb(self._to_long_tensor(input_ids))
 
         if not embed_only:
             vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding

@@ -75,19 +75,26 @@ def pad_feature_sequence(
     max_len: int,
     feature_dim: int = 1,
 ) -> np.ndarray:
-    values = np.asarray(sequence, dtype=np.int64)
-    if values.size == 0:
-        return np.zeros((max_len, feature_dim), dtype=np.int64)
-    if values.ndim == 1:
-        values = values.reshape(-1, 1)
-    elif values.ndim > 2:
-        values = values.reshape(values.shape[0], -1)
-
-    trimmed = values[-max_len:, :feature_dim]
     padded = np.zeros((max_len, feature_dim), dtype=np.int64)
-    if len(trimmed):
-        padded[-len(trimmed):, :trimmed.shape[1]] = trimmed
+    trimmed = list(sequence)[-max_len:]
+    start = max_len - len(trimmed)
+    for offset, value in enumerate(trimmed):
+        values = np.asarray(value, dtype=np.int64).reshape(-1)
+        values = values[(values > 0) & (values <= feature_dim)]
+        width = min(values.size, feature_dim)
+        if width:
+            padded[start + offset, :width] = values[:width]
     return padded
+
+
+def pad_numeric_sequence(sequence: list[object], max_len: int) -> np.ndarray:
+    values = np.asarray(sequence, dtype=np.float32)
+    trimmed = values[-max_len:]
+    padded = np.zeros(max_len, dtype=np.float32)
+    if trimmed.size:
+        padded[-len(trimmed) :] = trimmed
+    return padded
+
 
 def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
     trimmed = sequence[-max_len:]
@@ -104,6 +111,11 @@ def generate_time_matrix(time_seq, time_span):
         for j in range(size):
             time_matrix[i][j] = min(abs(time_seq[i]-time_seq[j]), time_span)
     return time_matrix
+
+
+def generate_time_matrix_batch(time_seq: torch.Tensor, time_span: int, device: torch.device) -> torch.Tensor:
+    time_seq = time_seq.to(device=device, dtype=torch.long)
+    return (time_seq.unsqueeze(2) - time_seq.unsqueeze(1)).abs().clamp(max=time_span)
 
 
 def generate_relation_matrix(seqs, max_len, time_span):
@@ -153,15 +165,15 @@ class TrainDataset(Dataset):
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
-            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
+            ratings_seq_padded = pad_numeric_sequence(ratings_sequence[:-1], self.max_len)
             review_upvotes_sequence = list(row.review_upvotes)
-            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
+            review_upvotes_seq_padded = pad_numeric_sequence(review_upvotes_sequence[:-1], self.max_len)
             app_num_reviews_sequence = list(row.app_num_reviews)
-            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
+            app_num_reviews_seq_padded = pad_numeric_sequence(app_num_reviews_sequence[:-1], self.max_len)
             app_avg_rating_sequence = list(row.app_avg_rating)
-            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
+            app_avg_rating_seq_padded = pad_numeric_sequence(app_avg_rating_sequence[:-1], self.max_len)
             app_price_sequence = list(row.app_price)
-            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
+            app_price_seq_padded = pad_numeric_sequence(app_price_sequence[:-1], self.max_len)
 
             # category metadata sequence
             app_category_sequence = list(row.app_category)
@@ -271,15 +283,15 @@ class EvalDataset(Dataset):
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
-            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
+            ratings_seq_padded = pad_numeric_sequence(ratings_sequence[:-1], self.max_len)
             review_upvotes_sequence = list(row.review_upvotes)
-            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
+            review_upvotes_seq_padded = pad_numeric_sequence(review_upvotes_sequence[:-1], self.max_len)
             app_num_reviews_sequence = list(row.app_num_reviews)
-            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
+            app_num_reviews_seq_padded = pad_numeric_sequence(app_num_reviews_sequence[:-1], self.max_len)
             app_avg_rating_sequence = list(row.app_avg_rating)
-            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
+            app_avg_rating_seq_padded = pad_numeric_sequence(app_avg_rating_sequence[:-1], self.max_len)
             app_price_sequence = list(row.app_price)
-            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
+            app_price_seq_padded = pad_numeric_sequence(app_price_sequence[:-1], self.max_len)
 
             # category metadata sequence
             app_category_sequence = list(row.app_category)
@@ -357,15 +369,15 @@ class FullEvalDataset(Dataset):
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
-            ratings_seq_padded = pad_sequence(ratings_sequence[:-1], self.max_len)
+            ratings_seq_padded = pad_numeric_sequence(ratings_sequence[:-1], self.max_len)
             review_upvotes_sequence = list(row.review_upvotes)
-            review_upvotes_seq_padded = pad_sequence(review_upvotes_sequence[:-1], self.max_len)
+            review_upvotes_seq_padded = pad_numeric_sequence(review_upvotes_sequence[:-1], self.max_len)
             app_num_reviews_sequence = list(row.app_num_reviews)
-            app_num_reviews_seq_padded = pad_sequence(app_num_reviews_sequence[:-1], self.max_len)
+            app_num_reviews_seq_padded = pad_numeric_sequence(app_num_reviews_sequence[:-1], self.max_len)
             app_avg_rating_sequence = list(row.app_avg_rating)
-            app_avg_rating_seq_padded = pad_sequence(app_avg_rating_sequence[:-1], self.max_len)
+            app_avg_rating_seq_padded = pad_numeric_sequence(app_avg_rating_sequence[:-1], self.max_len)
             app_price_sequence = list(row.app_price)
-            app_price_seq_padded = pad_sequence(app_price_sequence[:-1], self.max_len)
+            app_price_seq_padded = pad_numeric_sequence(app_price_sequence[:-1], self.max_len)
 
             # category metadata sequence
             app_category_sequence = list(row.app_category)
@@ -417,6 +429,9 @@ def collate_full_eval_batch(batch: list[dict[str, torch.Tensor]]) -> dict[str, o
         "input_ids": torch.stack([row["input_ids"] for row in batch], dim=0),
         "seen_ids": [row["seen_ids"] for row in batch],
         "target": torch.stack([row["target"] for row in batch], dim=0),
+        "time_seq": torch.stack([row["time_seq"] for row in batch], dim=0),
+        "metadata_seq": torch.stack([row["metadata_seq"] for row in batch], dim=0),
+        "category_seq": torch.stack([row["category_seq"] for row in batch], dim=0),
     }
 
 
@@ -441,14 +456,10 @@ def evaluate(
     with torch.no_grad():
         for batch in tqdm(data_loader, desc=f"eval:{split_name}", leave=False):
             input_ids = batch["input_ids"].to(device)
-
-            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
-
-            time_matrix = generate_time_matrix(time_seq, time_span)
             candidate_ids = batch["candidate_ids"].to(device)
+            time_matrix = generate_time_matrix_batch(batch["time_seq"], time_span, device)
+            metadata_seq = batch["metadata_seq"].to(device=device, dtype=torch.float32)
+            category_seq = batch["category_seq"].to(device=device, dtype=torch.long)
             scores = model.score_candidates(
                 input_ids=input_ids,
                 candidate_ids=candidate_ids,
@@ -490,13 +501,9 @@ def evaluate_full_ranking(
             seen_ids = batch["seen_ids"]
             targets = batch["target"].to(device)
 
-            # todo: add time_seq, metadata_seq, category_seq to eval and full eval datasets
-            time_seq = batch["time_seq"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
-
-            time_matrix = generate_time_matrix(time_seq, time_span)
-
+            time_matrix = generate_time_matrix_batch(batch["time_seq"], time_span, device)
+            metadata_seq = batch["metadata_seq"].to(device=device, dtype=torch.float32)
+            category_seq = batch["category_seq"].to(device=device, dtype=torch.long)
             scores = model.score_all_items(
                 input_ids=input_ids,
                 metadata_seq=metadata_seq,
@@ -557,11 +564,15 @@ def main() -> None:
     relation_matrix = None
 
     if args.model in ['tisasrec_m', 'tisasrec']:
+        relation_matrix_path = args.data_dir / f"relation_matrix_{args.dataset}_{args.max_len}_{args.time_span}.pickle"
         try:
-            relation_matrix = pickle.load(open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'rb'))
+            with relation_matrix_path.open("rb") as fh:
+                relation_matrix = pickle.load(fh)
         except:
             relation_matrix = generate_relation_matrix(sequences, args.max_len, args.time_span)
-            pickle.dump(relation_matrix, open('data/relation_matrix_%s_%d_%d.pickle'%(args.dataset, args.max_len, args.time_span),'wb'))
+            relation_matrix_path.parent.mkdir(parents=True, exist_ok=True)
+            with relation_matrix_path.open("wb") as fh:
+                pickle.dump(relation_matrix, fh)
 
     print(f'relation matrix enabled: {bool(relation_matrix)}')
 
@@ -715,17 +726,16 @@ def main() -> None:
             input_ids = batch["input_ids"].to(device)
             pos_ids = batch["pos_ids"].to(device)
             neg_ids = batch["neg_ids"].to(device)
-            time_matrix = batch["time_matrix"].to(device)
-            metadata_seq = batch["metadata_seq"].to(device)
-            category_seq = batch["category_seq"].to(device)
-
+            time_matrix = batch["time_matrix"].to(device=device, dtype=torch.long)
+            if time_matrix.numel() == 0:
+                time_matrix = generate_time_matrix_batch(batch["time_seq"], args.time_span, device)
             pos_logits, neg_logits = model.training_logits(
                 input_ids=input_ids,
                 pos_ids=torch.abs(pos_ids),
                 neg_ids=neg_ids,
                 time_matrix=time_matrix,
-                metadata_seq=metadata_seq,
-                category_seq=category_seq,
+                metadata_seq=batch["metadata_seq"].to(device=device, dtype=torch.float32),
+                category_seq=batch["category_seq"].to(device=device, dtype=torch.long),
             )
 
             negative_item_mask = pos_ids.lt(0)
