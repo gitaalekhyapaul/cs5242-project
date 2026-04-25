@@ -342,7 +342,7 @@ The downstream SteamRec app metadata ETL keeps the Stage 4a columns, rescales `%
 - `data/steamrec_app_metadata.parquet`
 - `data/steamrec_app_metadata.csv`
 
-The SteamRec app-category mapping then sorts the original category ids in increasing order, assigns dense ids from `1..n`, keeps the original id in a separate column, and writes both:
+The SteamRec app-category mapping then sorts the original category ids in increasing order, assigns dense ids from `1..n`, keeps the original id and Stage 4 category description in separate columns, and writes both:
 
 - `data/steamrec_app_category_mapping.parquet`
 - `data/steamrec_app_category_mapping.csv`
@@ -351,6 +351,7 @@ Its columns are:
 
 - `app_category_id`: the dense mapped category id from `1..n`
 - `app_category`: the original Steam category id from Stage 4a
+- `category_description`: the Steam category description from Stage 4
 - `count`: the number of apps whose category arrays contain that original category id
 
 The SteamRec item mapping sorts the original app ids in increasing order, assigns dense `item_id` values from `1..n`, and writes both:
