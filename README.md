@@ -46,6 +46,10 @@ The Steam dataset is produced by the stage-based crawler under [`steam-crawler/`
 |   |-- sasrec.py
 |   |-- train_sasrec.py
 |   `-- upload_processed_to_kaggle.py
+|-- main/
+|   |-- train_model.py
+|   |-- finetune_tisasrec_m_transfer.py
+|   `-- models/
 |-- data/
 |   |-- raw/
 |   |-- processed/
@@ -245,6 +249,66 @@ prepare-mobilerec --processed-dir data/processed/mobilerec-sample --sample-users
 train-sasrec --data-dir data/processed/mobilerec-sample --output-dir data/outputs/sasrec-sample --epochs 3
 ```
 
+## Transfer Fine-Tuning: MobileRec To SteamRec
+
+Use `main/finetune_tisasrec_m_transfer.py` to fine-tune the saved MobileRec
+`tisasrec_m` checkpoint on SteamRec. The script fixes these choices by design:
+
+- source model: `tisasrec_m`
+- source mode: `penalize-negative`
+- target dataset: `steamrec`
+- trainable weights: `item_emb.weight` and `metadata_cat_emb.weight`
+- frozen weights: the attention stack, feed-forward stack, time embeddings, position embeddings, numeric metadata projection, and fusion layer
+
+The script loads all compatible same-shape MobileRec weights. It resets the
+SteamRec item and genre/category embedding tables, then trains only those two
+tables.
+
+```bash
+source .venv/bin/activate
+python main/finetune_tisasrec_m_transfer.py \
+  --source-checkpoint main/data/outputs/tisasrec_m/penalize-negative/best_model.pt \
+  --epochs 5 \
+  --batch-size 128 \
+  --report-full-eval
+```
+
+Default outputs are written under:
+
+```text
+main/data/outputs/steamrec_transfer/tisasrec_m/penalize-negative/embedding_finetune/
+```
+
+The run directory keeps the same training artifacts as the normal trainer:
+
+- `history.csv`
+- `current_model.pt`
+- `best_model.pt`
+- `metrics.json`
+- `transfer_load_report.json`
+
+## TiSASRec Time Handling
+
+For `tisasrec` and `tisasrec_m`, the trainer converts each user's raw
+timestamps into personalized time ids before it builds relation matrices. For
+each user, it finds the shortest nonzero adjacent timestamp gap. It then maps
+each timestamp to:
+
+```text
+round((timestamp - user_min_timestamp) / user_min_nonzero_gap) + 1
+```
+
+If every timestamp in a user sequence is equal, the scale is `1`.
+
+The relation matrix cache uses the personalized mode in its filename:
+
+```text
+relation_matrix_<dataset>_<max_len>_<time_span>_personalized.pickle
+```
+
+Older raw timestamp caches without the `_personalized` suffix are ignored by
+the trainer.
+
 ## Baseline Assumptions
 
 The current baseline intentionally keeps the setup simple:
@@ -369,7 +433,7 @@ Operational note:
 ## Next Steps
 
 After the baseline is stable, the most natural improvements are:
-- add timestamp-aware features for a TiSASRec-style extension
+- run TiSASRec experiments with personalized time intervals
 - compare all-review interactions vs filtered positive interactions such as `rating >= 4`
 - add app metadata embeddings from category or text fields
 - standardize experiment configs and logging

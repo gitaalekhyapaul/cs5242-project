@@ -24,6 +24,7 @@ supported_datasets = ['mobilerec', 'steamrec']
 supported_models = ['sasrec', 'tisasrec', 'tisasrec_m']
 negative_items_handling_modes = ['treat-as-positive', 'filter-negative', 'penalize-negative']
 NUM_METADATA = 5
+TIME_NORMALIZATION = "personalized"
 
 def str2bool(s):
     if s not in {'false', 'true'}:
@@ -107,6 +108,27 @@ def pad_sequence(sequence: list[int], max_len: int) -> np.ndarray:
     return padded
 
 
+def personalize_time_sequence(timestamps: list[object]) -> list[int]:
+    values = [int(timestamp) for timestamp in timestamps]
+    if not values:
+        return []
+
+    time_diffs: list[int] = []
+    for current_time, next_time in zip(values, values[1:]):
+        diff = next_time - current_time
+        if diff < 0:
+            raise ValueError("Timestamps must be sorted by user before time normalization.")
+        if diff > 0:
+            time_diffs.append(diff)
+
+    time_scale = min(time_diffs) if time_diffs else 1
+    time_min = min(values)
+    return [
+        int(round((timestamp - time_min) / time_scale) + 1)
+        for timestamp in values
+    ]
+
+
 def generate_time_matrix(time_seq, time_span):
     size = time_seq.shape[0]
     time_matrix = np.zeros([size, size], dtype=np.int32)
@@ -121,11 +143,15 @@ def generate_time_matrix_batch(time_seq: torch.Tensor, time_span: int, device: t
     return (time_seq.unsqueeze(2) - time_seq.unsqueeze(1)).abs().clamp(max=time_span)
 
 
+def relation_matrix_cache_path(data_dir: Path, dataset: str, max_len: int, time_span: int) -> Path:
+    return data_dir / f"relation_matrix_{dataset}_{max_len}_{time_span}_{TIME_NORMALIZATION}.pickle"
+
+
 def generate_relation_matrix(seqs, max_len, time_span):
     relation_matrix = dict()
     for row in seqs.itertuples():
         print(f'{row.Index} / {len(seqs)}')
-        timestamps_sequence = list(row.timestamps)
+        timestamps_sequence = personalize_time_sequence(list(row.timestamps))
         time_seq = np.zeros([max_len], dtype=np.int32)
         idx = max_len - 1
 
@@ -164,7 +190,7 @@ class TrainDataset(Dataset):
 
         for row in sequences.itertuples(index=False):
             train_sequence = list(row.train_sequence)
-            timestamps_sequence = list(row.timestamps)
+            timestamps_sequence = personalize_time_sequence(list(row.timestamps))
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
@@ -282,7 +308,7 @@ class EvalDataset(Dataset):
 
         for row in sequences.itertuples(index=False):
             sequence = list(getattr(row, sequence_column))
-            timestamps_sequence = list(row.timestamps)
+            timestamps_sequence = personalize_time_sequence(list(row.timestamps))
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
@@ -368,7 +394,7 @@ class FullEvalDataset(Dataset):
 
         for row in sequences.itertuples(index=False):
             sequence = list(getattr(row, sequence_column))
-            timestamps_sequence = list(row.timestamps)
+            timestamps_sequence = personalize_time_sequence(list(row.timestamps))
 
             # numerical metadata sequences
             ratings_sequence = list(row.ratings)
@@ -567,7 +593,12 @@ def main() -> None:
     relation_matrix = None
 
     if args.model in ['tisasrec_m', 'tisasrec']:
-        relation_matrix_path = args.data_dir / f"relation_matrix_{args.dataset}_{args.max_len}_{args.time_span}.pickle"
+        relation_matrix_path = relation_matrix_cache_path(
+            args.data_dir,
+            args.dataset,
+            args.max_len,
+            args.time_span,
+        )
         try:
             with relation_matrix_path.open("rb") as fh:
                 relation_matrix = pickle.load(fh)
@@ -839,9 +870,11 @@ def main() -> None:
         full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
 
     metrics_filepath = args.output_dir / args.model / args.negative_items_handling / "metrics.json"
+    config = vars(args).copy()
+    config["time_normalization"] = TIME_NORMALIZATION
 
     metrics = {
-        "config": vars(args),
+        "config": config,
         "evaluation_protocol": {
             "seed": args.seed,
             "validation": {
