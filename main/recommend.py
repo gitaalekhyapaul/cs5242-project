@@ -14,19 +14,6 @@ device = torch.device("cuda" \
     "cpu"
 )
 
-CATALOG = {
-    "Mobile Apps": {
-        "Productivity": ["Notion", "Evernote", "Slack", "Todoist"],
-        "Social Media": ["Instagram", "TikTok", "X (Twitter)", "Threads"],
-        "Finance": ["Mint", "Robinhood", "Revolut", "YBAB"]
-    },
-    "Games": {
-        "RPG": ["Genshin Impact", "Elden Ring", "Final Fantasy VII", "Starfield"],
-        "Action": ["Call of Duty", "Hades", "Doom Eternal", "Spider-Man 2"],
-        "Puzzle": ["Portal 2", "Tetris Effect", "Monument Valley", "Candy Crush"]
-    }
-}
-
 MAIN_CATEGORIES = ["Mobile Apps", "Games"]
 MAX_ITEMS_DISPLAYED = 12
 MAX_LEN = 50
@@ -116,6 +103,11 @@ def main():
         with open('metadata/app_metadata.json', 'r') as file:
             metadata = json.load(file)
 
+    category_id2description = dict()
+
+    for key, val in categories.items():
+        category_id2description[val.get("app_category_id")] = key
+
     model = TiSASRec(
         num_items=settings["num_items"],
         num_categories=settings["num_categories"],
@@ -195,19 +187,32 @@ def main():
         ).unsqueeze(0).to(device),
     )
 
-    pprint(scores)
+    top_values, top_item_ids = torch.topk(scores.flatten(), k=10)
+
+    # Print the results
+    # print("Top 10 Scores:", top_values)
+    # print("Top 10 Item IDs:", top_item_ids)
 
     # Stage 6: Final Recommendations Output
     print("\n" + "="*60)
     print(f"Top 10 {main_category} Recommendations (based on your selection)")
     print("="*60)
-    if not selected_items:
-        print("No items selected.")
-    else:
-        for idx, item in enumerate(selected_items, 1):
-            print(f"{idx}. {item}")
+
+    idx = 1
+    for item_id in top_item_ids.tolist():
+        item = metadata.get(str(item_id))
+        price = item.get('price')
+        app_name = item.get('app_name')
+        num_reviews = item.get('num_reviews')
+        average_rating = item.get('avg_rating')
+        category_ids = item.get('category_ids')
+        print(f"\n{idx}. {app_name}")
+        print(f"Price: ${price}, Reviews: {num_reviews:,} ({average_rating * 100}% positive)")
+        print(f"Categories: {list(map(lambda id: category_id2description.get(id), category_ids))}\n")
+        idx += 1
+
     print("="*60)
-    print("Enjoy your new finds!")
+    print("\nEnjoy your new finds!\n")
 
 
 
