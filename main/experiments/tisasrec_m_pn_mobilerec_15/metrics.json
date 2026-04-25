@@ -1,0 +1,146 @@
+{
+  "config": {
+    "dataset": "mobilerec",
+    "data_dir": "data",
+    "model": "tisasrec_m",
+    "negative_items_handling": "penalize-negative",
+    "output_dir": "data/outputs",
+    "batch_size": 128,
+    "epochs": 15,
+    "max_len": 50,
+    "time_span": 256,
+    "hidden_size": 128,
+    "num_blocks": 2,
+    "num_heads": 2,
+    "dropout": 0.2,
+    "lr": 0.001,
+    "steplr_gamma": 0.95,
+    "weight_decay": 1e-05,
+    "eval_negative_samples": 100,
+    "report_full_eval": false,
+    "seed": 42,
+    "inference_only": false,
+    "training_only": false,
+    "time_normalization": "personalized"
+  },
+  "evaluation_protocol": {
+    "seed": 42,
+    "validation": {
+      "mode": "sampled",
+      "sequence": "train_sequence",
+      "target": "validation_target",
+      "negative_samples": 100,
+      "negative_pool_excludes": "items already present in the input sequence"
+    },
+    "test": {
+      "mode": "sampled",
+      "sequence": "validation_sequence",
+      "target": "test_target",
+      "negative_samples": 100,
+      "negative_pool_excludes": "items already present in the input sequence"
+    },
+    "full_test": {
+      "enabled": false,
+      "mode": "full_ranking",
+      "sequence": "validation_sequence",
+      "target": "test_target",
+      "ranking_pool": "all catalog items excluding padding and items already present in the input sequence"
+    }
+  },
+  "best_val_hr_at_10": 0.18742768993443887,
+  "test_hr_at_10": 0.16433965471189568,
+  "test_ndcg_at_10": 0.07894860088408397,
+  "device": "cuda",
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.1005172818190874,
+      "val_hr_at_10": 0.1033837539815172,
+      "val_ndcg_at_10": 0.047064477283929235
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.776405680484702,
+      "val_hr_at_10": 0.16138892459756324,
+      "val_ndcg_at_10": 0.06896698974308811
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.5584676216136821,
+      "val_hr_at_10": 0.10992558312265216,
+      "val_ndcg_at_10": 0.05161948886495522
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.47202142458511226,
+      "val_hr_at_10": 0.10111268229278256,
+      "val_ndcg_at_10": 0.05097685716168631
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.4258917855006903,
+      "val_hr_at_10": 0.10051277656368285,
+      "val_ndcg_at_10": 0.05060144687889012
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.3941329862452512,
+      "val_hr_at_10": 0.10459784890945709,
+      "val_ndcg_at_10": 0.0520935824030347
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.3725892054260976,
+      "val_hr_at_10": 0.11093970947422548,
+      "val_ndcg_at_10": 0.05485345206148517
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.3545664827446615,
+      "val_hr_at_10": 0.10965419719758324,
+      "val_ndcg_at_10": 0.05429973462110426
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.34475396431342337,
+      "val_hr_at_10": 0.12563739983716846,
+      "val_ndcg_at_10": 0.06011472759583476
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.33524053383352986,
+      "val_hr_at_10": 0.14249189413092228,
+      "val_ndcg_at_10": 0.06721288203325711
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.3267717144116623,
+      "val_hr_at_10": 0.15333304766393852,
+      "val_ndcg_at_10": 0.07276675084785085
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.31957427473565125,
+      "val_hr_at_10": 0.16455985487994743,
+      "val_ndcg_at_10": 0.07789650632268182
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.3140186786951269,
+      "val_hr_at_10": 0.18222850694890802,
+      "val_ndcg_at_10": 0.08618624513019821
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.3114893415809985,
+      "val_hr_at_10": 0.18649926440130837,
+      "val_ndcg_at_10": 0.08866134471113127
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.3060465589982936,
+      "val_hr_at_10": 0.18742768993443887,
+      "val_ndcg_at_10": 0.09000202989242362
+    }
+  ]
+}
