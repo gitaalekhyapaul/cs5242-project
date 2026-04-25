@@ -3,7 +3,7 @@ import torch
 from pathlib import Path
 import json
 import time
-from pprint import pprint
+import argparse
 
 import numpy as np
 
@@ -18,6 +18,11 @@ MAIN_CATEGORIES = ["Mobile Apps", "Games"]
 MAX_ITEMS_DISPLAYED = 12
 MAX_LEN = 50
 TIME_SPAN = 256
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Game/MobileApp Recommendation System")
+    parser.add_argument("--use-finetuned-model", action="store_true")
+    return parser.parse_args()
 
 def generate_time_matrix(time_seq, time_span):
     size = time_seq.shape[0]
@@ -74,6 +79,7 @@ def get_choice(options):
 def main():
     selected_items = []
     print("--- Welcome to the App & Game Discovery Tool ---")
+    args = parse_args()
 
     # Stage 1: Initial Category Selection
     print("\nWhat are you interested in today?")
@@ -92,7 +98,12 @@ def main():
             "num_items": 9598,
             "num_categories": 17,
         }
-        model_checkpoint = Path("metadata") / "steamrec_model.pt"
+        if args.use_finetuned_model:
+            print('\n------ Using finetuned model -----\n')
+            model_checkpoint = Path("metadata") / "steamrec_model_ft.pt"
+        else:
+            model_checkpoint = Path("metadata") / "steamrec_model.pt"
+
         with open('metadata/game_categories.json', 'r') as file:
             categories = json.load(file)
         with open('metadata/game_metadata.json', 'r') as file:
@@ -122,6 +133,8 @@ def main():
     ).to(device)
 
     model.load_state_dict(torch.load(model_checkpoint, map_location=device))
+    model.eval()
+
     input_ids = []
     metadata_seq = []
     category_seq = []
