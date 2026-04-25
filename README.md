@@ -46,6 +46,10 @@ The Steam dataset is produced by the stage-based crawler under [`steam-crawler/`
 |   |-- sasrec.py
 |   |-- train_sasrec.py
 |   `-- upload_processed_to_kaggle.py
+|-- main/
+|   |-- train_model.py
+|   |-- finetune_tisasrec_m_transfer.py
+|   `-- models/
 |-- data/
 |   |-- raw/
 |   |-- processed/
@@ -244,6 +248,44 @@ For a smaller first run, prepare a sample dataset first and then train on it:
 prepare-mobilerec --processed-dir data/processed/mobilerec-sample --sample-users 5000
 train-sasrec --data-dir data/processed/mobilerec-sample --output-dir data/outputs/sasrec-sample --epochs 3
 ```
+
+## Transfer Fine-Tuning: MobileRec To SteamRec
+
+Use `main/finetune_tisasrec_m_transfer.py` to fine-tune the saved MobileRec
+`tisasrec_m` checkpoint on SteamRec. The script fixes these choices by design:
+
+- source model: `tisasrec_m`
+- source mode: `penalize-negative`
+- target dataset: `steamrec`
+- trainable weights: `item_emb.weight` and `metadata_cat_emb.weight`
+- frozen weights: the attention stack, feed-forward stack, time embeddings, position embeddings, numeric metadata projection, and fusion layer
+
+The script loads all compatible same-shape MobileRec weights. It resets the
+SteamRec item and genre/category embedding tables, then trains only those two
+tables.
+
+```bash
+source .venv/bin/activate
+python main/finetune_tisasrec_m_transfer.py \
+  --source-checkpoint main/data/outputs/tisasrec_m/penalize-negative/best_model.pt \
+  --epochs 5 \
+  --batch-size 128 \
+  --report-full-eval
+```
+
+Default outputs are written under:
+
+```text
+main/data/outputs/steamrec_transfer/tisasrec_m/penalize-negative/embedding_finetune/
+```
+
+The run directory keeps the same training artifacts as the normal trainer:
+
+- `history.csv`
+- `current_model.pt`
+- `best_model.pt`
+- `metrics.json`
+- `transfer_load_report.json`
 
 ## Baseline Assumptions
 
