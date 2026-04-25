@@ -333,16 +333,17 @@ The Stage 4a CSV patch derives the final schema as follows:
 - `num_reviews`: from Stage 4 `recommendations_total`
 - `%positive_reviews`: from `appreviews.query_summary.total_positive / total_reviews * 100`
 - `price`: from `appdetails.data.price_overview.final / 100`, falling back to `price_overview.initial / 100` if `final` is absent, with free games forced to `0.0`
-- `app_category`: from Stage 4 `category_ids`
+- `app_category`: from Stage 4a `appdetails.data.genres[*].id`
 
 Missing Stage 4a values are written as empty CSV cells rather than the literal string `<NA>`.
+Stage 4a also writes `data/stage_04a_genre_mapping.csv`, a helper file with the genre id and genre name used by the downstream mapping table.
 
-The downstream SteamRec app metadata ETL keeps the Stage 4a columns, rescales `%positive_reviews` from `0-100` into `0-1` with two decimal places, converts `app_category` from the pipe-separated Stage 4a string into an array of the original integer category ids, fills missing `price` values with `0.0`, and writes both:
+The downstream SteamRec app metadata ETL keeps the Stage 4a columns, rescales `%positive_reviews` from `0-100` into `0-1` with two decimal places, converts `app_category` from the pipe-separated Stage 4a string into an array of Steam genre ids, fills missing `price` values with `0.0`, and writes both:
 
 - `data/steamrec_app_metadata.parquet`
 - `data/steamrec_app_metadata.csv`
 
-The SteamRec app-category mapping then sorts the original category ids in increasing order, assigns dense ids from `1..n`, keeps the original id and Stage 4 category description in separate columns, and writes both:
+The SteamRec app-category mapping then sorts the Steam genre ids in increasing order, assigns dense ids from `1..n`, keeps the original genre id and Stage 4a genre description in separate columns, and writes both:
 
 - `data/steamrec_app_category_mapping.parquet`
 - `data/steamrec_app_category_mapping.csv`
@@ -350,9 +351,9 @@ The SteamRec app-category mapping then sorts the original category ids in increa
 Its columns are:
 
 - `app_category_id`: the dense mapped category id from `1..n`
-- `app_category`: the original Steam category id from Stage 4a
-- `category_description`: the Steam category description from Stage 4
-- `count`: the number of apps whose category arrays contain that original category id
+- `app_category`: the original Steam genre id from Stage 4a
+- `category_description`: the Steam genre description from Stage 4a
+- `count`: the number of apps whose `app_category` arrays contain that original genre id
 
 The SteamRec item mapping sorts the original app ids in increasing order, assigns dense `item_id` values from `1..n`, and writes both:
 
@@ -383,14 +384,14 @@ The Stage 5a user-diagnostics section then:
 - sorts each user's reviews by timestamp and assigns `position = 1, 2, 3, ...` in chronological order
 - filters `user_review_positions_df` down to only the users who meet that minimum review count before any downstream SteamRec ETL runs
 - remaps `app_id` in the position output to the dense `item_id` while keeping the column name `app_id`
-- adds `app_category` to the position output as the array of mapped SteamRec category ids for that app
+- adds `app_category` to the position output as the array of mapped SteamRec genre ids for that app
 
 The SteamRec interactions ETL section then reshapes `user_review_positions_df` for downstream use by:
 
 - renaming `app_id` to `item_id`
 - renaming `review_score` to `rating`
 - renaming `review_rating` to `review_upvotes`
-- keeping `app_category` as the mapped SteamRec category-id array for each interaction
+- keeping `app_category` as the mapped SteamRec genre-id array for each interaction
 - writing both `data/steamrec_interactions.parquet` and `data/steamrec_interactions.csv`
 
 The SteamRec sequences ETL section then reshapes `steamrec_interactions` into one row per `user_id` by:
