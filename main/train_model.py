@@ -629,7 +629,7 @@ def main() -> None:
 
     print('Preparing val dataset')
     val_dataset = EvalDataset(
-        sampling_method=True,
+        training_mode=True,
         sequences=sequences,
         sequence_column="train_sequence",
         target_column="validation_target",
