@@ -715,10 +715,17 @@ def main() -> None:
             input_ids = batch["input_ids"].to(device)
             pos_ids = batch["pos_ids"].to(device)
             neg_ids = batch["neg_ids"].to(device)
+            time_matrix = batch["time_matrix"].to(device)
+            metadata_seq = batch["metadata_seq"].to(device)
+            category_seq = batch["category_seq"].to(device)
+
             pos_logits, neg_logits = model.training_logits(
                 input_ids=input_ids,
                 pos_ids=torch.abs(pos_ids),
                 neg_ids=neg_ids,
+                time_matrix=time_matrix,
+                metadata_seq=metadata_seq,
+                category_seq=category_seq,
             )
 
             negative_item_mask = pos_ids.lt(0)
