@@ -190,7 +190,7 @@ class TiSASRec(torch.nn.Module):
         category_seq,
         embed_only=False,
     ):
-        item_vecs = self.item_emb(torch.LongTensor(input_ids).to(self.device))
+        item_vecs = self.item_emb(input_ids)
         metadata_cat_vecs = self.metadata_cat_emb(category_seq)
         metadata_num_vecs = self.metadata_num_emb(metadata_seq)
 
@@ -224,13 +224,13 @@ class TiSASRec(torch.nn.Module):
         seq_len = input_ids.shape[1]
         positions = torch.arange(seq_len).expand(batch_size, seq_len)
 
-        positions = torch.LongTensor(positions).to(self.device)
+        # positions = torch.LongTensor(positions).to(self.device)
         abs_pos_K = self.abs_pos_K_emb(positions)
         abs_pos_V = self.abs_pos_V_emb(positions)
         abs_pos_K = self.abs_pos_K_emb_dropout(abs_pos_K)
         abs_pos_V = self.abs_pos_V_emb_dropout(abs_pos_V)
 
-        time_matrix = torch.LongTensor(time_matrix).to(self.device)
+        # time_matrix = torch.LongTensor(time_matrix).to(self.device)
         time_matrix_K = self.time_matrix_K_emb(time_matrix)
         time_matrix_V = self.time_matrix_V_emb(time_matrix)
         time_matrix_K = self.time_matrix_K_dropout(time_matrix_K)
@@ -303,8 +303,8 @@ class TiSASRec(torch.nn.Module):
             time_matrix=time_matrix,
         )
 
-        pos_embs = self.seq2vec(torch.LongTensor(pos_ids).to(self.device), metadata_seq, category_seq, embed_only=True)
-        neg_embs = self.seq2vec(torch.LongTensor(neg_ids).to(self.device), metadata_seq, category_seq, embed_only=True)
+        pos_embs = self.seq2vec(pos_ids, metadata_seq, category_seq, embed_only=True)
+        neg_embs = self.seq2vec(neg_ids, metadata_seq, category_seq, embed_only=True)
 
         pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
@@ -347,7 +347,7 @@ class TiSASRec(torch.nn.Module):
         )
 
         candidate_emb = self.seq2vec(
-            input_ids=torch.LongTensor(candidate_ids).to(self.device),
+            input_ids=candidate_ids,
             metadata_seq=metadata_seq,
             category_seq=category_seq,
             embed_only=True,
@@ -378,7 +378,7 @@ class TiSASRecWithoutMetadata(TiSASRec):
         super(TiSASRecWithoutMetadata, self).__init__(*user_args, **kwargs)
 
     def seq2vec(self, seq, embed_only=False):
-        vecs = self.item_emb(torch.LongTensor(seq).to(self.device))
+        vecs = self.item_emb(seq)
 
         if not embed_only:
             vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
