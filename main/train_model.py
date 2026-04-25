@@ -730,7 +730,7 @@ def main() -> None:
         except:
             pass # just ignore those failed init layers
 
-    history_filepath = args.output_dir / args.model / args.negative_items_handling / "history.csv"
+    history_filepath = args.output_dir / args.model / args.negative_items_handling / f"history_{args.dataset}.csv"
     history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr', 'time_taken']
 
     # Create file and write header if it doesn't exist
@@ -750,8 +750,8 @@ def main() -> None:
             optimizer_lr = df['lr'].iloc[-1]
             print(f"Resuming from checkpoint: lr: {optimizer_lr}, best_val_hr: {best_val_hr}")
 
-    best_checkpoint = args.output_dir / args.model / args.negative_items_handling / "best_model.pt"
-    current_checkpoint = args.output_dir / args.model / args.negative_items_handling / "current_model.pt"
+    best_checkpoint = args.output_dir / args.model / args.negative_items_handling / f"best_model_{args.dataset}.pt"
+    current_checkpoint = args.output_dir / args.model / args.negative_items_handling / f"current_model_{args.dataset}.pt"
 
     if current_checkpoint.exists():
         try:
@@ -883,7 +883,7 @@ def main() -> None:
     if args.report_full_eval:
         full_test_metrics = evaluate_full_ranking(model, full_test_loader, device, "test", time_span=args.time_span)
 
-    metrics_filepath = args.output_dir / args.model / args.negative_items_handling / "metrics.json"
+    metrics_filepath = args.output_dir / args.model / args.negative_items_handling / f"metrics_{args.dataset}.json"
     config = vars(args).copy()
     config["time_normalization"] = TIME_NORMALIZATION
 
