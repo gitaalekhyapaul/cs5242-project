@@ -5,7 +5,7 @@ import json
 import math
 import random
 import csv
-import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -292,6 +292,7 @@ class EvalDataset(Dataset):
         self,
         *,
         sequences: pd.DataFrame,
+        training_mode: bool=False,
         sequence_column: str,
         target_column: str,
         num_items: int,
@@ -300,6 +301,10 @@ class EvalDataset(Dataset):
         max_len: int,
         seed: int,
     ) -> None:
+        if training_mode:
+            percent_10 = int(len(sequences) * 0.1)
+            sequences = sequences.head(percent_10)
+
         self.rows: list[dict[str, object]] = []
         self.num_categories = num_categories
         self.max_len = max_len
@@ -624,6 +629,7 @@ def main() -> None:
 
     print('Preparing val dataset')
     val_dataset = EvalDataset(
+        sampling_method=True,
         sequences=sequences,
         sequence_column="train_sequence",
         target_column="validation_target",
@@ -725,7 +731,7 @@ def main() -> None:
             pass # just ignore those failed init layers
 
     history_filepath = args.output_dir / args.model / args.negative_items_handling / "history.csv"
-    history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr']
+    history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr', 'time_taken']
 
     # Create file and write header if it doesn't exist
     if not history_filepath.exists():
@@ -774,6 +780,7 @@ def main() -> None:
 
     history: list[dict[str, float | int]] = []
 
+    start_time = time.perf_counter()
     for epoch in range(1, args.epochs + 1):
         if args.inference_only: break # skip training if in inference mode
 
@@ -829,6 +836,12 @@ def main() -> None:
         #* evaluate every epoch
         val_metrics = evaluate(model, val_loader, device, "val", time_span=args.time_span)
 
+        end_time = time.perf_counter()
+
+        time_taken = end_time - start_time
+
+        start_time = end_time
+
         train_loss = float(np.mean(epoch_losses))
         val_hr = val_metrics.hr_at_10
         val_ndcg = val_metrics.ndcg_at_10
@@ -849,6 +862,7 @@ def main() -> None:
                 val_ndcg,
                 current_lr,
                 best_val_hr,
+                time_taken,
             ])
 
         history.append(epoch_record)
