@@ -1,5 +1,5 @@
 {
-  "1": {
+  "Action": {
     "app_category_id": 1,
     "description": "Action",
     "item_ids": [
@@ -4421,7 +4421,7 @@
       9595
     ]
   },
-  "2": {
+  "Strategy": {
     "app_category_id": 2,
     "description": "Strategy",
     "item_ids": [
@@ -6707,7 +6707,7 @@
       9595
     ]
   },
-  "3": {
+  "RPG": {
     "app_category_id": 3,
     "description": "RPG",
     "item_ids": [
@@ -9368,7 +9368,7 @@
       9592
     ]
   },
-  "4": {
+  "Casual": {
     "app_category_id": 4,
     "description": "Casual",
     "item_ids": [
@@ -11857,7 +11857,7 @@
       9596
     ]
   },
-  "5": {
+  "Racing": {
     "app_category_id": 5,
     "description": "Racing",
     "item_ids": [
@@ -12202,7 +12202,7 @@
       9579
     ]
   },
-  "6": {
+  "Sports": {
     "app_category_id": 6,
     "description": "Sports",
     "item_ids": [
@@ -12536,7 +12536,7 @@
       9567
     ]
   },
-  "7": {
+  "Indie": {
     "app_category_id": 7,
     "description": "Indie",
     "item_ids": [
@@ -18379,7 +18379,7 @@
       9598
     ]
   },
-  "8": {
+  "Adventure": {
     "app_category_id": 8,
     "description": "Adventure",
     "item_ids": [
@@ -22712,7 +22712,7 @@
       9598
     ]
   },
-  "9": {
+  "Simulation": {
     "app_category_id": 9,
     "description": "Simulation",
     "item_ids": [
@@ -25457,7 +25457,7 @@
       9598
     ]
   },
-  "10": {
+  "Massively Multiplayer": {
     "app_category_id": 10,
     "description": "Massively Multiplayer",
     "item_ids": [
@@ -25693,7 +25693,7 @@
       9573
     ]
   },
-  "11": {
+  "Free To Play": {
     "app_category_id": 11,
     "description": "Free To Play",
     "item_ids": [
@@ -25856,14 +25856,14 @@
       9180
     ]
   },
-  "12": {
+  "Game Development": {
     "app_category_id": 12,
     "description": "Game Development",
     "item_ids": [
       9223
     ]
   },
-  "13": {
+  "Early Access": {
     "app_category_id": 13,
     "description": "Early Access",
     "item_ids": [
@@ -26550,7 +26550,7 @@
       9579
     ]
   },
-  "14": {
+  "Sexual Content": {
     "app_category_id": 14,
     "description": "Sexual Content",
     "item_ids": [
@@ -26558,7 +26558,7 @@
       4023
     ]
   },
-  "15": {
+  "Nudity": {
     "app_category_id": 15,
     "description": "Nudity",
     "item_ids": [
@@ -26566,7 +26566,7 @@
       2651
     ]
   },
-  "16": {
+  "Violent": {
     "app_category_id": 16,
     "description": "Violent",
     "item_ids": [
@@ -26580,7 +26580,7 @@
       3474
     ]
   },
-  "17": {
+  "Gore": {
     "app_category_id": 17,
     "description": "Gore",
     "item_ids": [

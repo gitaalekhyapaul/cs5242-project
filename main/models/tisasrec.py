@@ -197,12 +197,13 @@ class TiSASRec(torch.nn.Module):
                 -1,
             )
         if category_seq.dim() == 2:
-            batch_size, seq_len = category_seq.shape
-            return self.metadata_cat_emb(category_seq.reshape(batch_size * seq_len, 1)).reshape(
-                batch_size,
-                seq_len,
-                -1,
-            )
+            # batch_size, seq_len = category_seq.shape
+            # return self.metadata_cat_emb(category_seq.reshape(batch_size * seq_len, 1)).reshape(
+            #     batch_size,
+            #     seq_len,
+            #     -1,
+            # )
+            return self.metadata_cat_emb(category_seq).unsqueeze(0)
         if category_seq.dim() == 1:
             return self.metadata_cat_emb(category_seq.unsqueeze(1))
         raise ValueError(f"Unsupported category_seq shape: {tuple(category_seq.shape)}")
@@ -228,6 +229,10 @@ class TiSASRec(torch.nn.Module):
         metadata_num_vecs = self.metadata_num_emb(metadata_seq)
 
         item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
+
+        print(item_vecs.shape)
+        print(metadata_num_vecs.shape)
+        print(metadata_cat_vecs.shape)
 
         combined = torch.cat([
             item_vecs,
