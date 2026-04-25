@@ -1,0 +1,57 @@
+{
+  "config": {
+    "dataset": "mobilerec",
+    "data_dir": "data",
+    "model": "sasrec",
+    "negative_items_handling": "penalize-negative",
+    "output_dir": "data/outputs",
+    "batch_size": 128,
+    "epochs": 10,
+    "max_len": 50,
+    "time_span": 256,
+    "hidden_size": 128,
+    "num_blocks": 2,
+    "num_heads": 2,
+    "dropout": 0.2,
+    "lr": 0.001,
+    "steplr_gamma": 0.95,
+    "weight_decay": 1e-05,
+    "eval_negative_samples": 100,
+    "report_full_eval": true,
+    "seed": 42,
+    "inference_only": true,
+    "training_only": false,
+    "time_normalization": "personalized"
+  },
+  "evaluation_protocol": {
+    "seed": 42,
+    "validation": {
+      "mode": "sampled",
+      "sequence": "train_sequence",
+      "target": "validation_target",
+      "negative_samples": 100,
+      "negative_pool_excludes": "items already present in the input sequence"
+    },
+    "test": {
+      "mode": "sampled",
+      "sequence": "validation_sequence",
+      "target": "test_target",
+      "negative_samples": 100,
+      "negative_pool_excludes": "items already present in the input sequence"
+    },
+    "full_test": {
+      "enabled": true,
+      "mode": "full_ranking",
+      "sequence": "validation_sequence",
+      "target": "test_target",
+      "ranking_pool": "all catalog items excluding padding and items already present in the input sequence"
+    }
+  },
+  "best_val_hr_at_10": -1.0,
+  "test_hr_at_10": 0.1249116211572165,
+  "test_ndcg_at_10": 0.05831557430095047,
+  "device": "cuda",
+  "history": [],
+  "full_test_hr_at_10": 0.0015826061867332466,
+  "full_test_ndcg_at_10": 0.0007732084352790986
+}
