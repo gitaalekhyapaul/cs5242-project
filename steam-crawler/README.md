@@ -355,7 +355,7 @@ Its columns are:
 - `category_description`: the Steam genre description from Stage 4a
 - `count`: the number of apps whose `app_category` arrays contain that original genre id
 
-The SteamRec item mapping sorts the original app ids in increasing order, assigns dense `item_id` values from `1..n`, and writes both:
+The SteamRec item mapping sorts the original app ids in increasing order, attaches the app name from Stage 4, assigns dense `item_id` values from `1..n`, and writes both:
 
 - `data/steamrec_item_mapping.parquet`
 - `data/steamrec_item_mapping.csv`
@@ -363,9 +363,10 @@ The SteamRec item mapping sorts the original app ids in increasing order, assign
 Its columns are:
 
 - `app_id`: the original Steam app id
+- `app_name`: the Steam app name from Stage 4
 - `item_id`: the dense mapped item id from `1..n`
 
-The Kaggle upload cell also writes `data/final_item_mapping.parquet` from this table with `app_id` renamed to `app_package`, so downstream consumers can read the final mapping with columns `app_package` and `item_id`.
+The Kaggle upload cell also writes `data/final_item_mapping.parquet` from this table with `app_id` renamed to `app_package`, so downstream consumers can read the final mapping with columns `app_package`, `app_name`, and `item_id`.
 
 The Stage 5a transform derives the final schema as follows:
 
@@ -422,7 +423,7 @@ Run order in the notebook:
 9. Execute the SteamRec interactions ETL cell to write `steamrec_interactions.parquet` and `steamrec_interactions.csv` from `user_review_positions_df`.
 10. Execute the SteamRec sequences ETL cell to write `steamrec_sequences.parquet` and `steamrec_sequences.csv` from `steamrec_interactions`.
 11. Optionally edit `KAGGLE_SHARED_DATASET_HANDLE` in the final upload cell, then publish whichever raw and ETL parquet files are currently present locally into the shared Kaggle dataset, including `steamrec_interactions.parquet`, `steamrec_sequences.parquet`, and the `final_app_category.parquet`, `final_item_mapping.parquet`, and `final_sequences.parquet` aliases.
-12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, assert that `final_item_mapping.parquet` uses `app_package` rather than `app_id`, and inspect the previews that the local parquet stack can decode. The verification cell now retries with exponential backoff from a 10-second base for up to 10 retries, capped at 300 seconds per wait, to tolerate Kaggle processing delays after upload.
+12. Run the final Kaggle sanity-check cell to download the shared dataset from Kaggle, confirm that those parquet resources are present, assert that `final_item_mapping.parquet` uses `app_package`, `app_name`, and `item_id`, and inspect the previews that the local parquet stack can decode. The verification cell now retries with exponential backoff from a 10-second base for up to 10 retries, capped at 300 seconds per wait, to tolerate Kaggle processing delays after upload.
 
 Do not run either parquet cell while its corresponding CSV build step is still incomplete.
 
