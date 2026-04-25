@@ -183,9 +183,6 @@ def main():
             break
         clear_screen()
 
-    print(np.array(metadata_seq).shape)
-    print(np.array(category_seq).shape)
-
     scores = model.score_all_items(
         input_ids=torch.from_numpy(np.array(input_ids)).unsqueeze(0).to(device),
         metadata_seq=torch.from_numpy(np.array(metadata_seq)).float().unsqueeze(0).to(device),

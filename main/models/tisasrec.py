@@ -230,10 +230,6 @@ class TiSASRec(torch.nn.Module):
 
         item_vecs *= math.sqrt(self.item_emb.embedding_dim) # boost magnitude of item sequence embedding
 
-        print(item_vecs.shape)
-        print(metadata_num_vecs.shape)
-        print(metadata_cat_vecs.shape)
-
         combined = torch.cat([
             item_vecs,
             metadata_num_vecs,
