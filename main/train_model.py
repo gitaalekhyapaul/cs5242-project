@@ -694,8 +694,6 @@ def main() -> None:
             pass # just ignore those failed init layers
 
     history_filepath = args.output_dir / args.model / args.negative_items_handling / "history.csv"
-
-    history: list[dict[str, float | int]] = []
     history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr']
 
     # Create file and write header if it doesn't exist
@@ -742,6 +740,8 @@ def main() -> None:
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=args.steplr_gamma)
 
     bce = nn.BCEWithLogitsLoss(reduction="none")
+
+    history: list[dict[str, float | int]] = []
 
     for epoch in range(1, args.epochs + 1):
         if args.inference_only: break # skip training if in inference mode
