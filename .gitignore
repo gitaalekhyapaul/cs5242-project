@@ -187,3 +187,4 @@ processed/
 raw/
 
 !main/metadata/*
+!main/experiments/*.pt
