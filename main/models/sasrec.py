@@ -126,8 +126,12 @@ class SASRec(nn.Module):
 
     def user_representation(self, input_ids: torch.Tensor) -> torch.Tensor:
         encoded = self.encode(input_ids)
-        lengths = input_ids.ne(0).sum(dim=1).clamp(min=1) - 1
-        return encoded[torch.arange(encoded.size(0), device=input_ids.device), lengths]
+        non_padding_positions = input_ids.ne(0).long() * torch.arange(
+            input_ids.size(1),
+            device=input_ids.device,
+        ).unsqueeze(0)
+        last_positions = non_padding_positions.max(dim=1).values
+        return encoded[torch.arange(encoded.size(0), device=input_ids.device), last_positions]
 
     def score_all_items(
         self,

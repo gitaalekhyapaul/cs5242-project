@@ -729,6 +729,8 @@ def main() -> None:
             torch.nn.init.xavier_uniform_(param.data)
         except:
             pass # just ignore those failed init layers
+    if hasattr(model, "clear_padding_item_embedding"):
+        model.clear_padding_item_embedding()
 
     history_filepath = args.output_dir / args.model / args.negative_items_handling / f"history_{args.dataset}.csv"
     history_headers = ['training_loss', 'hr@10', 'ndcg@10', 'lr', 'best_val_hr', 'time_taken']
