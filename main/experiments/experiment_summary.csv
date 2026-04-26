@@ -1,0 +1,9 @@
+experiment,dataset,model,negative_items_handling,best_hr_at_10,best_ndcg_at_10,epochs,best_hr_epoch,best_ndcg_epoch,full_test_hr_at_10,full_test_ndcg_at_10
+tisasrec_m_pn_mobilerec_100,mobilerec,tisasrec_m,penalize-negative,0.2181800002856694,0.1038473570779108,69,24,24,0.004003650849650984,0.001834039899822017
+tisasrec_m_pn_mobilerec_15,mobilerec,tisasrec_m,penalize-negative,0.1874276899344388,0.0900020298924236,15,15,15,,
+tisasrec_m_ft_steamrec_10,steamrec,tisasrec_m,penalize-negative,0.1426453645974519,0.0661477695172179,10,7,8,,
+tisasrec_m_ft_steamrec_60,steamrec,tisasrec_m,penalize-negative,0.1426453645974519,0.0661477695172179,60,7,8,0.0009064109514773652,0.0003870075866286231
+sasrec_tap_mobilerec_100,mobilerec,sasrec,treat-as-positive,0.1414634843096084,0.0850049583053662,100,96,96,0.006630377183046689,0.003087469850479799
+sasrec_pn_mobilerec_100,mobilerec,sasrec,penalize-negative,0.1367356558255131,0.0650735410879851,100,59,59,0.0015826061867332466,0.0007732084352790986
+tisasrec_m_pn_steamrec_15,steamrec,tisasrec_m,penalize-negative,0.1158082006099627,0.0549644345524142,15,12,6,,
+tisasrec_m_pn_steamrec_100,steamrec,tisasrec_m,penalize-negative,0.1158082006099627,0.0549644345524142,100,12,6,0.0020246001626457034,0.0007402116422298978
