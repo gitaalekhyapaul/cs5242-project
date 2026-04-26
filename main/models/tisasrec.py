@@ -7,8 +7,7 @@ import math
 
 class PointWiseFeedForward(torch.nn.Module):
     def __init__(self, hidden_size, dropout_rate):
-
-        super(PointWiseFeedForward, self).__init__()
+        super().__init__()
 
         self.w_1 = torch.nn.Linear(hidden_size, hidden_size)
         self.w_2 = torch.nn.Linear(hidden_size, hidden_size)
@@ -25,8 +24,7 @@ class PointWiseFeedForward(torch.nn.Module):
 # Using 2 Conv1D for channel wise fusion
 class PointWiseFeedForwardAlternate(torch.nn.Module):
     def __init__(self, hidden_size, dropout_rate):
-
-        super(PointWiseFeedForwardAlternate, self).__init__()
+        super().__init__()
 
         self.conv1 = torch.nn.Conv1d(hidden_size, hidden_size, kernel_size=1)
         self.dropout1 = torch.nn.Dropout(p=dropout_rate)
@@ -43,7 +41,7 @@ class PointWiseFeedForwardAlternate(torch.nn.Module):
 
 class TimeAwareMultiHeadAttention(torch.nn.Module):
     def __init__(self, hidden_size, head_num, dropout_rate, device):
-        super(TimeAwareMultiHeadAttention, self).__init__()
+        super().__init__()
         self.Q_w = torch.nn.Linear(hidden_size, hidden_size)
         self.K_w = torch.nn.Linear(hidden_size, hidden_size)
         self.V_w = torch.nn.Linear(hidden_size, hidden_size)
@@ -108,7 +106,7 @@ class TimeAwareMultiHeadAttention(torch.nn.Module):
         return outputs
 
 
-class TiSASRec(torch.nn.Module):
+class TiSASRecWithMetadata(torch.nn.Module):
     def __init__(
         self,
         *,
@@ -123,7 +121,7 @@ class TiSASRec(torch.nn.Module):
         dropout,
         device,
     ):
-        super(TiSASRec, self).__init__()
+        super().__init__()
 
         self.num_items = num_items
         self.num_categories = num_categories
@@ -403,9 +401,9 @@ class TiSASRec(torch.nn.Module):
         return user_repr @ all_item_emb.transpose(0, 1)
 
 
-class TiSASRecWithoutMetadata(TiSASRec):
+class TiSASRec(TiSASRecWithMetadata):
     def __init__(self, *user_args, **kwargs):
-        super(TiSASRecWithoutMetadata, self).__init__(*user_args, **kwargs)
+        super().__init__(*user_args, **kwargs)
 
     def seq2vec(
         self,
