@@ -18,7 +18,7 @@ from tqdm import tqdm
 import pickle
 
 from models.sasrec import SASRec
-from models.tisasrec import TiSASRec, TiSASRecWithoutMetadata
+from models.tisasrec import TiSASRec, TiSASRecWithMetadata
 
 supported_datasets = ['mobilerec', 'steamrec']
 supported_models = ['sasrec', 'tisasrec', 'tisasrec_m']
@@ -476,7 +476,7 @@ class Metrics:
 
 
 def evaluate(
-    model: SASRec | TiSASRec | TiSASRecWithoutMetadata,
+    model: SASRec | TiSASRec | TiSASRecWithMetadata,
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
@@ -520,7 +520,7 @@ def evaluate(
 
 
 def evaluate_full_ranking(
-    model: SASRec | TiSASRec | TiSASRecWithoutMetadata,
+    model: SASRec | TiSASRec | TiSASRecWithMetadata,
     data_loader: DataLoader,
     device: torch.device,
     split_name: str,
@@ -691,7 +691,7 @@ def main() -> None:
             num_heads=args.num_heads,
             dropout=args.dropout,
         ).to(device)
-    elif args.model == 'tisasrec_m':
+    elif args.model == 'tisasrec':
         model = TiSASRec(
             num_items=num_items,
             num_categories=num_categories,
@@ -704,8 +704,8 @@ def main() -> None:
             dropout=args.dropout,
             device=device,
         ).to(device)
-    elif args.model == 'tisasrec':
-        model = TiSASRecWithoutMetadata(
+    elif args.model == 'tisasrec_m':
+        model = TiSASRecWithMetadata(
             num_items=num_items,
             num_categories=num_categories,
             num_metadata=NUM_METADATA,

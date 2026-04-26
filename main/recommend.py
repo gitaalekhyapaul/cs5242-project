@@ -1,4 +1,4 @@
-from models.tisasrec import TiSASRec
+from models.tisasrec import TiSASRecWithMetadata
 import torch
 from pathlib import Path
 import json
@@ -119,7 +119,7 @@ def main():
     for key, val in categories.items():
         category_id2description[val.get("app_category_id")] = key
 
-    model = TiSASRec(
+    model = TiSASRecWithMetadata(
         num_items=settings["num_items"],
         num_categories=settings["num_categories"],
         num_metadata=5,

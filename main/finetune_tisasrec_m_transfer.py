@@ -14,7 +14,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from models.tisasrec import TiSASRec
+from models.tisasrec import TiSASRecWithMetadata
 from train_model import (
     EvalDataset,
     FullEvalDataset,
@@ -130,7 +130,7 @@ def normalize_state_dict_keys(
     return state_dict
 
 
-def initialize_model_parameters(model: TiSASRec) -> None:
+def initialize_model_parameters(model: TiSASRecWithMetadata) -> None:
     for _, param in model.named_parameters():
         try:
             torch.nn.init.xavier_uniform_(param.data)
@@ -141,7 +141,7 @@ def initialize_model_parameters(model: TiSASRec) -> None:
 
 def transfer_compatible_weights(
     *,
-    model: TiSASRec,
+    model: TiSASRecWithMetadata,
     source_state: dict[str, torch.Tensor],
 ) -> dict[str, object]:
     target_state = model.state_dict()
@@ -208,7 +208,7 @@ def transfer_compatible_weights(
     }
 
 
-def freeze_for_embedding_finetune(model: TiSASRec) -> list[str]:
+def freeze_for_embedding_finetune(model: TiSASRecWithMetadata) -> list[str]:
     for _, param in model.named_parameters():
         param.requires_grad = False
 
@@ -398,7 +398,7 @@ def main() -> None:
     )
     print(f"Using device: {device}")
 
-    model = TiSASRec(
+    model = TiSASRecWithMetadata(
         num_items=num_items,
         num_categories=num_categories,
         num_metadata=NUM_METADATA,
