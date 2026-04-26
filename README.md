@@ -1,38 +1,27 @@
-# CS5242 MobileRec Project
+# CS5242 Sequential Recommendation Project
 
-This repository is now organized around one concrete goal: preparing the `recmeapp/mobilerec` dataset and training a SASRec baseline for next-item recommendation.
+This repo studies next-item recommendation from timestamped review histories.
+It uses MobileRec for app recommendation and SteamRec for game recommendation.
+The goal is to compare order-only self-attention, time-aware self-attention,
+metadata-aware self-attention, and MobileRec-to-SteamRec transfer.
 
-The immediate scope is:
-- data preparation for sequential recommendation
-- a reproducible SASRec baseline
-- leave-one-out evaluation with `HR@10` and `NDCG@10`
+## Project Motivation
 
-## Project Focus
+App and game catalogs are large. A user often has a short review history.
+Can chronological review sequences predict the next app or game? This project
+tests that question with two related domains and one shared training contract.
 
-We use the MobileRec interactions dataset to model app recommendation as a sequential next-item prediction task. Each user's review history is converted into a chronological app sequence. For the baseline:
-- each reviewed app is treated as a positive interaction
-- users are split with chronological leave-one-out
-- the second-last interaction is used for validation
-- the last interaction is used for test
-
-This is the standard setup used by the original SASRec paper and many later reproductions.
-
-Useful references:
-- SASRec paper/code: https://github.com/kang205/SASRec
-- PyTorch SASRec reproduction: https://github.com/pmixer/SASRec.pytorch
-- MobileRec dataset: https://huggingface.co/datasets/recmeapp/mobilerec
-- Processed MobileRec dataset: [gitaalekhyapaul/cs5242-mobilerec-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/cs5242-mobilerec-dataset)
-- Processed Steam dataset: [gitaalekhyapaul/steam-cs5242-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/steam-cs5242-dataset)
+The root project owns model training, MobileRec preparation, transfer
+fine-tuning, recommendation demos, and experiment reporting. The Steam data
+crawler has its own runbook in
+[`steam-crawler/README.md`](./steam-crawler/README.md).
 
 ## Published Datasets
 
-This repo currently exposes two processed datasets that are ready to consume from Kaggle:
-
-- MobileRec sequential recommendation artifacts: [gitaalekhyapaul/cs5242-mobilerec-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/cs5242-mobilerec-dataset)
-- Steam processed stage artifacts: [gitaalekhyapaul/steam-cs5242-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/steam-cs5242-dataset)
-
-The MobileRec dataset is the main input for the SASRec baseline in this root project.
-The Steam dataset is produced by the stage-based crawler under [`steam-crawler/`](./steam-crawler/PLAN.md) and is meant for the Steam-specific data collection and downstream analysis workflow.
+- MobileRec processed dataset:
+  [gitaalekhyapaul/cs5242-mobilerec-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/cs5242-mobilerec-dataset)
+- SteamRec processed dataset:
+  [gitaalekhyapaul/steam-cs5242-dataset](https://www.kaggle.com/datasets/gitaalekhyapaul/steam-cs5242-dataset)
 
 ## Repository Layout
 
@@ -40,246 +29,283 @@ The Steam dataset is produced by the stage-based crawler under [`steam-crawler/`
 .
 |-- .env.example
 |-- pyproject.toml
-|-- README.md
-|-- models/
-|   |-- prepare_mobilerec.py
-|   |-- sasrec.py
-|   |-- train_sasrec.py
-|   `-- upload_processed_to_kaggle.py
+|-- raw/                         # local MobileRec raw CSV staging
+|-- processed/                   # local MobileRec processed staging
 |-- main/
+|   |-- data/
+|   |   |-- mobilerec/           # trainer-ready MobileRec final_* files
+|   |   |-- steamrec/            # trainer-ready SteamRec final_* files
+|   |   `-- outputs/             # model checkpoints and metrics
+|   |-- models/
+|   |   |-- prepare_mobilerec.py
+|   |   |-- upload_processed_to_kaggle.py
+|   |   |-- sasrec.py
+|   |   `-- tisasrec.py
 |   |-- train_model.py
 |   |-- finetune_tisasrec_m_transfer.py
-|   `-- models/
-|-- data/
-|   |-- raw/
-|   |-- processed/
-|   |-- configs/
-|   `-- outputs/
-|-- notebooks/
-|   `-- CS5242_Project.ipynb
+|   |-- recommend.py
+|   |-- mobilerec_eda_etl.ipynb
+|   |-- eda.ipynb
+|   `-- experiments/
+|       |-- report.ipynb
+|       |-- experiment_summary.csv
+|       `-- experiment_summary.md
+|-- report.ipynb
 `-- steam-crawler/
 ```
 
-Notes:
-- `notebooks/CS5242_Project.ipynb` is kept as existing exploratory work.
-- `steam-crawler/` is the stage-based Steam data pipeline used to build the published Steam processed dataset. The full operator runbook lives in [steam-crawler/README.md](./steam-crawler/README.md).
+## Methodology
 
-## Steam Crawler Reference
+The project treats app and game reviews as implicit interaction signals. Each
+user history is sorted by time, then converted into a sequence of item ids.
+The split is chronological:
 
-The root project is centered on MobileRec preparation and SASRec training, but the repo also contains a separate Steam ingestion workflow in [`steam-crawler/`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler).
+- `train_sequence`: all items except the last two
+- `validation_sequence`: all items except the last item
+- `test_sequence`: the full sequence
+- `validation_target`: the second-last item
+- `test_target`: the last item
 
-That crawler covers:
+Training uses pointwise binary classification. The true next item is the
+positive target. A sampled unseen item is the negative target. The trainer
+supports three negative-label modes:
 
-- staged Steam API collection with resumable CSV checkpoints
-- optional Stage 4a and Stage 5a transforms for downstream analytics
-- notebook and terminal operator surfaces
-- publication of the processed Steam parquet snapshots to Kaggle
+- `treat-as-positive`
+- `filter-negative`
+- `penalize-negative`
 
-For the full crawler contract, environment setup, stage layout, and notebook/CLI usage, read [steam-crawler/README.md](./steam-crawler/README.md).
+Evaluation reports `HR@10` and `NDCG@10`. Validation and sampled test ranking
+use `100` sampled negatives by default. `--report-full-eval` adds full-catalog
+test ranking against every item except padding and seen input items.
 
-## Environment
+The model set is:
 
-This project is configured for:
-- Python `3.10.12`
-- `torch==2.9.1+cu129` on Linux
-- `torch==2.9.1` on macOS arm64
-- CUDA runtime `12.9`
-- GPU validation target: `Tesla T4`
+- `sasrec`: order-only self-attention with item and position embeddings.
+- `tisasrec`: time-aware self-attention with personalized time-interval
+  matrices.
+- `tisasrec_m`: TiSASRec with numeric metadata and category or genre bags.
 
-The root `pyproject.toml` is set up for `uv` with platform-specific PyTorch resolution:
+TiSASRec time ids are personalized per user. For each sequence, the trainer
+finds the smallest nonzero adjacent timestamp gap, then maps each timestamp to:
 
-- Linux resolves the CUDA 12.9 wheel from the official PyTorch index for cluster training.
-- macOS arm64 resolves the standard PyPI wheel so local development tools like `uv sync` work on Apple Silicon.
-
-## Setup With uv
-
-Create or refresh the in-project environment:
-
-```bash
-cd /home/e0492463/cs5242-project-main
-uv venv --python /usr/bin/python3 .venv
-source .venv/bin/activate
-uv sync
+```text
+round((timestamp - user_min_timestamp) / user_min_nonzero_gap) + 1
 ```
 
-If you only want the already-created environment:
+The relation matrix cache uses:
 
-```bash
-cd /home/e0492463/cs5242-project-main
-source .venv/bin/activate
+```text
+relation_matrix_<dataset>_<max_len>_<time_span>_personalized.pickle
 ```
 
-## Step 1: Prepare MobileRec
+## Data Contract
 
-First download the raw files with the Hugging Face CLI, not from Python:
+`main/train_model.py` reads one dataset folder at a time from
+`main/data/<dataset>/`. The active datasets are `mobilerec` and `steamrec`.
+Each dataset folder must contain:
+
+- `final_sequences.parquet`
+- `final_item_mapping.parquet`
+- `final_app_category.parquet`
+
+`final_sequences.parquet` uses this shared schema:
+
+- `user_id`
+- `sequence_length`
+- `train_sequence`
+- `validation_sequence`
+- `test_sequence`
+- `validation_target`
+- `test_target`
+- `timestamps`
+- `ratings`
+- `review_upvotes`
+- `app_category`
+- `app_num_reviews`
+- `app_avg_rating`
+- `app_price`
+
+`main/data/mobilerec/final_sequences.parquet` currently has `700111` rows.
+`main/data/steamrec/final_sequences.parquet` currently has `118048` rows.
+
+The MobileRec final aliases come from `main/mobilerec_eda_etl.ipynb`.
+The SteamRec final aliases come from
+`steam-crawler/notebooks/eda_etl.ipynb`. The trainer-ready copies live under
+`main/data/mobilerec/` and `main/data/steamrec/`.
+
+## Setup
+
+Use Python `3.10`. The root environment uses `uv` and the dependencies in
+`pyproject.toml`.
 
 ```bash
+cd "/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project"
+uv venv --python 3.10 .venv
 source .venv/bin/activate
-hf download recmeapp/mobilerec interactions/mobilerec_final.csv app_meta/app_meta.csv \
-  --repo-type dataset \
-  --local-dir data/raw/mobilerec
+UV_CACHE_DIR=.uv-cache uv sync
 ```
 
-Then build processed sequence artifacts:
-
-```bash
-source .venv/bin/activate
-prepare-mobilerec
-```
-
-The default raw paths expected by `prepare-mobilerec` are:
-- `data/raw/mobilerec/interactions/mobilerec_final.csv`
-- `data/raw/mobilerec/app_meta/app_meta.csv`
-
-The preprocessing step is designed to stay safer on this VM:
-- raw download is done by the Hugging Face CLI, not by Python dataset loaders
-- preprocessing uses disk-backed DuckDB instead of reading the whole CSV into pandas at once
-- the default DuckDB memory cap is `2GB`
-
-### What The Data Preparation Actually Does
-
-`models/prepare_mobilerec.py` converts the raw MobileRec review logs into SASRec-ready sequential recommendation data with the following steps:
-
-1. Load `mobilerec_final.csv` with DuckDB and keep only the fields needed for recommendation: `uid`, `app_package`, `app_category`, `rating`, and a usable interaction timestamp.
-2. Clean invalid rows by dropping records with missing `uid`, missing `app_package`, or missing time information. The script first tries `unix_timestamp`; if that is unavailable, it falls back to parsing `formated_date`.
-3. Filter low-activity users and keep only users with at least `5` interactions by default (`--min-user-interactions`). This ensures every remaining user has enough history for train, validation, and test splits.
-4. Optionally subsample users deterministically with `--sample-users`, ordered by `uid`, for faster smoke tests.
-5. Build integer id mappings:
-   - `uid -> user_id`
-   - `app_package -> item_id`
-6. Create chronological user histories by sorting each user's interactions by `(timestamp, app_package)` and assigning a `position` index.
-7. Export the cleaned interaction table to `interactions.parquet`, then aggregate each user history into sequence features for leave-one-out evaluation:
-   - `train_sequence`: all but the last two items
-   - `validation_sequence`: all but the last item
-   - `test_sequence`: the full sequence
-   - `validation_target`: the second-last item
-   - `test_target`: the last item
-8. Load `app_meta.csv`, remove duplicate `app_package` rows, and keep only metadata for items that still exist after filtering.
-9. Write a compact `summary.json` with row counts, number of users/items, and validation/test coverage.
-
-In short, the raw review table is turned into one ordered interaction log plus one per-user sequence table, which is the exact format used by the SASRec training script.
-
-This writes:
-- `data/processed/mobilerec/interactions.parquet`
-- `data/processed/mobilerec/sequences.parquet`
-- `data/processed/mobilerec/user_mapping.parquet`
-- `data/processed/mobilerec/item_mapping.parquet`
-- `data/processed/mobilerec/app_metadata.parquet`
-- `data/processed/mobilerec/summary.json`
-
-## Optional: Upload Processed Data To Kaggle
-
-The root project now includes a terminal uploader at `models/upload_processed_to_kaggle.py`.
-It follows the same Kaggle credential contract used in `steam-crawler/notebooks/eda.ipynb`:
-
-- `KAGGLE_USERNAME`
-- `KAGGLE_API_TOKEN`
-
-Create the root env file first:
+Copy the root env template before Kaggle publication:
 
 ```bash
 cp .env.example .env
 ```
 
-Then upload any processed directory with a Kaggle dataset handle:
+The root `.env` supports:
+
+- `KAGGLE_USERNAME`
+- `KAGGLE_API_TOKEN`
+
+## Prepare MobileRec
+
+Download raw MobileRec CSV files with the Hugging Face CLI:
 
 ```bash
-upload-processed-to-kaggle \
-  --input-dir data/processed/mobilerec \
-  --dataset-handle <your-kaggle-username>/<dataset-slug>
+hf download recmeapp/mobilerec interactions/mobilerec_final.csv app_meta/app_meta.csv \
+  --repo-type dataset \
+  --local-dir raw/mobilerec
 ```
 
-The script:
+Build the base parquet artifacts:
 
-- loads credentials from the root `.env` by default
-- lets the CLI override `KAGGLE_USERNAME` and `KAGGLE_API_TOKEN`
-- stages every non-hidden file under the input directory into a temporary upload bundle
-- preserves the relative file layout inside the Kaggle dataset version
-- maps `KAGGLE_API_TOKEN` to `KAGGLE_KEY` internally for the Kaggle client
+```bash
+python main/models/prepare_mobilerec.py \
+  --raw-dir raw/mobilerec \
+  --processed-dir processed \
+  --memory-limit 2GB \
+  --threads 4
+```
 
-The Kaggle upload cell in `eda_etl.ipynb` uses the same uploader helpers and also stages compatibility aliases for downstream Kaggle consumers:
-- `final_app_category.parquet` from `app_category_mapping.parquet`
-- `final_sequences.parquet` from `enriched_mobilerec_sequences.parquet`
-- `final_item_mapping.parquet` from `item_mapping.parquet`
+The script writes:
 
-A separate Kaggle sanity-check cell downloads the Kaggle snapshot with retries and previews each expected parquet, so upload and verification can be rerun independently.
+- `processed/interactions.parquet`
+- `processed/sequences.parquet`
+- `processed/user_mapping.parquet`
+- `processed/item_mapping.parquet`
+- `processed/app_metadata.parquet`
+- `processed/summary.json`
+
+Use `main/mobilerec_eda_etl.ipynb` to attach metadata arrays, build enriched
+MobileRec artifacts, and publish the Kaggle-facing final aliases.
+
+For a smaller local preparation run:
+
+```bash
+python main/models/prepare_mobilerec.py \
+  --raw-dir raw/mobilerec \
+  --processed-dir processed-sample \
+  --sample-users 5000
+```
+
+## Publish Processed MobileRec
+
+The terminal uploader stages every non-hidden file in a directory and pushes a
+Kaggle dataset version:
+
+```bash
+python main/models/upload_processed_to_kaggle.py \
+  --input-dir processed \
+  --dataset-handle <kaggle-username>/cs5242-mobilerec-dataset
+```
 
 Useful flags:
 
-- `--env-file /path/to/.env` to use a different env file
-- `--kaggle-username <name>` to override `KAGGLE_USERNAME`
-- `--kaggle-api-token <token>` to override `KAGGLE_API_TOKEN`
-- `--version-notes "..."` to control the Kaggle version message
+- `--env-file /path/to/.env`
+- `--kaggle-username <name>`
+- `--kaggle-api-token <token>`
+- `--version-notes "..."`
 
-For a faster smoke run:
+The notebook publish cell is the preferred path for the public MobileRec
+snapshot, since it stages the enriched files and `final_*` aliases together.
+
+## Train Models
+
+Run commands from the repo root with the root `.venv` active.
+
+SASRec on MobileRec:
 
 ```bash
-prepare-mobilerec --processed-dir data/processed/mobilerec-sample --sample-users 5000
+python main/train_model.py \
+  --dataset mobilerec \
+  --data-dir main/data \
+  --model sasrec \
+  --negative-items-handling treat-as-positive \
+  --output-dir main/data/outputs \
+  --epochs 100 \
+  --batch-size 128 \
+  --eval-negative-samples 100 \
+  --report-full-eval
 ```
 
-If the VM is under pressure, you can make preprocessing even more conservative:
+TiSASRec-M on MobileRec:
 
 ```bash
-prepare-mobilerec --memory-limit 1GB --threads 2
+python main/train_model.py \
+  --dataset mobilerec \
+  --data-dir main/data \
+  --model tisasrec_m \
+  --negative-items-handling penalize-negative \
+  --output-dir main/data/outputs \
+  --epochs 100 \
+  --batch-size 128 \
+  --eval-negative-samples 100 \
+  --report-full-eval
 ```
 
-## Step 2: Train SASRec Baseline
-
-Run training on the prepared dataset:
+TiSASRec-M on SteamRec:
 
 ```bash
-source .venv/bin/activate
-train-sasrec \
-  --data-dir data/processed/mobilerec \
-  --output-dir data/outputs/sasrec-baseline-full \
-  --epochs 5 \
-  --batch-size 256 \
-  --max-len 50 \
-  --eval-negative-samples 100
+python main/train_model.py \
+  --dataset steamrec \
+  --data-dir main/data \
+  --model tisasrec_m \
+  --negative-items-handling penalize-negative \
+  --output-dir main/data/outputs \
+  --epochs 100 \
+  --batch-size 128 \
+  --eval-negative-samples 100 \
+  --report-full-eval
 ```
 
-Outputs:
-- `data/outputs/sasrec-baseline-full/best_model.pt`
-- `data/outputs/sasrec-baseline-full/metrics.json`
+`main/train_model.py` writes artifacts under:
 
-For a smaller first run, prepare a sample dataset first and then train on it:
-
-```bash
-prepare-mobilerec --processed-dir data/processed/mobilerec-sample --sample-users 5000
-train-sasrec --data-dir data/processed/mobilerec-sample --output-dir data/outputs/sasrec-sample --epochs 3
+```text
+main/data/outputs/<model>/<negative-items-handling>/
 ```
 
-## Transfer Fine-Tuning: MobileRec To SteamRec
+The artifact names include the dataset:
 
-Use `main/finetune_tisasrec_m_transfer.py` to fine-tune the saved MobileRec
-`tisasrec_m` checkpoint on SteamRec. The script fixes these choices by design:
+- `history_<dataset>.csv`
+- `current_model_<dataset>.pt`
+- `best_model_<dataset>.pt`
+- `metrics_<dataset>.json`
 
-- source model: `tisasrec_m`
-- source mode: `penalize-negative`
-- target dataset: `steamrec`
-- trainable weights: `item_emb.weight` and `metadata_cat_emb.weight`
-- frozen weights: the attention stack, feed-forward stack, time embeddings, position embeddings, numeric metadata projection, and fusion layer
+## Transfer Fine-Tuning
 
-The script loads all compatible same-shape MobileRec weights. It resets the
-SteamRec item and genre/category embedding tables, then trains only those two
-tables.
+`main/finetune_tisasrec_m_transfer.py` fine-tunes a MobileRec TiSASRec-M
+checkpoint on SteamRec. It loads compatible same-shape weights, resets the
+SteamRec item and genre embedding tables, and trains only:
+
+- `item_emb.weight`
+- `metadata_cat_emb.weight`
+
+Run:
 
 ```bash
-source .venv/bin/activate
 python main/finetune_tisasrec_m_transfer.py \
-  --source-checkpoint main/data/outputs/tisasrec_m/penalize-negative/best_model.pt \
-  --epochs 5 \
+  --source-checkpoint main/data/outputs/tisasrec_m/penalize-negative/best_model_mobilerec.pt \
+  --epochs 60 \
   --batch-size 128 \
   --report-full-eval
 ```
 
-Default outputs are written under:
+The default output folder is:
 
 ```text
 main/data/outputs/steamrec_transfer/tisasrec_m/penalize-negative/embedding_finetune/
 ```
 
-The run directory keeps the same training artifacts as the normal trainer:
+Transfer artifacts:
 
 - `history.csv`
 - `current_model.pt`
@@ -287,153 +313,55 @@ The run directory keeps the same training artifacts as the normal trainer:
 - `metrics.json`
 - `transfer_load_report.json`
 
-## TiSASRec Time Handling
+## Recommendation Demo
 
-For `tisasrec` and `tisasrec_m`, the trainer converts each user's raw
-timestamps into personalized time ids before it builds relation matrices. For
-each user, it finds the shortest nonzero adjacent timestamp gap. It then maps
-each timestamp to:
+The recommendation demo reads packaged metadata and model checkpoints from
+`main/metadata/`.
 
-```text
-round((timestamp - user_min_timestamp) / user_min_nonzero_gap) + 1
+```bash
+cd main
+python recommend.py
 ```
 
-If every timestamp in a user sequence is equal, the scale is `1`.
+Use the fine-tuned SteamRec checkpoint:
 
-The relation matrix cache uses the personalized mode in its filename:
-
-```text
-relation_matrix_<dataset>_<max_len>_<time_span>_personalized.pickle
+```bash
+cd main
+python recommend.py --use-finetuned-model
 ```
 
-Older raw timestamp caches without the `_personalized` suffix are ignored by
-the trainer.
+## Experiment Reporting
 
-## Baseline Assumptions
+`main/experiments/report.ipynb` scans experiment folders that contain
+`history.csv` and `metrics.json`. It writes:
 
-The current baseline intentionally keeps the setup simple:
-- pure sequential recommendation using app ids only
-- no metadata features yet
-- all interactions treated as implicit positives
-- one negative per position during training
-- sampled ranking evaluation with 100 negatives per user during validation/test for the current formal run
+- `main/experiments/experiment_summary.csv`
+- `main/experiments/experiment_summary.md`
+- one training-curve PNG per experiment
 
-This is good enough for:
-- getting the pipeline running end to end
-- verifying GPU training works
-- establishing a baseline before adding time-aware or metadata-aware variants
+Current summary highlights:
 
-## Current Baseline Result
+| experiment | dataset | model | negative mode | best HR@10 | best NDCG@10 | full HR@10 |
+| --- | --- | --- | --- | ---: | ---: | ---: |
+| `tisasrec_m_pn_mobilerec_100` | mobilerec | tisasrec_m | penalize-negative | 0.21818 | 0.10385 | 0.00400 |
+| `tisasrec_m_ft_steamrec_60` | steamrec | tisasrec_m | penalize-negative | 0.14265 | 0.06615 | 0.00091 |
+| `sasrec_tap_mobilerec_100` | mobilerec | sasrec | treat-as-positive | 0.14146 | 0.08500 | 0.00663 |
+| `tisasrec_m_pn_steamrec_100` | steamrec | tisasrec_m | penalize-negative | 0.11581 | 0.05496 | 0.00202 |
 
-The repository has already been validated end to end on the full processed MobileRec dataset with the following command:
+The full table lives in
+[`main/experiments/experiment_summary.md`](./main/experiments/experiment_summary.md).
 
+## SteamRec Crawler
 
+SteamRec data collection and Steam-specific ETL live under
+[`steam-crawler/`](./steam-crawler/). That README covers:
 
+- Steam API setup
+- smoke and full crawler runs
+- Stage 4a genre and price patching
+- Stage 5a review transforms
+- SteamRec `final_*` aliases
+- SLURM execution
 
-source /home/e0492463/cs5242-project-main/.venv/bin/activate && train-sasrec --data-dir data/processed/mobilerec --output-dir data/outputs/sasrec-baseline-formal --epochs 5 --batch-size 256 --max-len 50 --eval-negative-samples 100 --report-full-eval --seed 42
-
-{                                                                               35 [01:23<00:02, 31.61it/s, loss=1.0099]
-  "config": {
-    "data_dir": "data/processed/mobilerec",
-    "output_dir": "data/outputs/sasrec-baseline-formal",
-    "batch_size": 256,
-    "epochs": 5,
-    "max_len": 50,
-    "hidden_size": 128,
-    "num_blocks": 2,
-    "num_heads": 2,
-    "dropout": 0.2,
-    "lr": 0.001,
-    "weight_decay": 1e-05,
-    "eval_negative_samples": 100,
-    "report_full_eval": true,
-    "seed": 42
-  },
-  "evaluation_protocol": {
-    "seed": 42,
-    "validation": {
-      "mode": "sampled",
-      "sequence": "train_sequence",
-      "target": "validation_target",
-      "negative_samples": 100,
-      "negative_pool_excludes": "items already present in the input sequence"
-    },
-    "test": {
-      "mode": "sampled",
-      "sequence": "validation_sequence",
-      "target": "test_target",
-      "negative_samples": 100,
-      "negative_pool_excludes": "items already present in the input sequence"
-    },
-    "full_test": {
-      "enabled": true,
-      "mode": "full_ranking",
-      "sequence": "validation_sequence",
-      "target": "test_target",
-      "ranking_pool": "all catalog items excluding padding and items already present in the input sequence"
-    }
-  },
-  "best_val_hr_at_10": 0.23830078373286523,
-  "test_hr_at_10": 0.29528603321473307,
-  "test_ndcg_at_10": 0.16047780840613754,
-  "device": "cuda",
-  "history": [
-    {
-      "epoch": 1,
-      "train_loss": 1.044216931737973,
-      "val_hr_at_10": 0.2009524204019077,
-      "val_ndcg_at_10": 0.10573001672577338
-    },
-    {
-      "epoch": 2,
-      "train_loss": 1.0169477131292632,
-      "val_hr_at_10": 0.17653486375731847,
-      "val_ndcg_at_10": 0.09501029382183758
-    },
-    {
-      "epoch": 3,
-      "train_loss": 1.0111083860807053,
-      "val_hr_at_10": 0.19240520431760105,
-      "val_ndcg_at_10": 0.10329748695242258
-    },
-    {
-      "epoch": 4,
-      "train_loss": 1.007399996586648,
-      "val_hr_at_10": 0.2119235378389998,
-      "val_ndcg_at_10": 0.11320676166117256
-    },
-    {
-      "epoch": 5,
-      "train_loss": 1.0048197463182034,
-      "val_hr_at_10": 0.23830078373286523,
-      "val_ndcg_at_10": 0.1289146752740715
-    }
-  ],
-  "full_test_hr_at_10": 0.008450088628803146,
-  "full_test_ndcg_at_10": 0.00384851951195927
-}
-
-Artifacts:
-- `data/outputs/sasrec-baseline-full/best_model.pt`
-- `data/outputs/sasrec-baseline-full/metrics.json`
-
-Observed result on this VM:
-- device: `cuda`
-best val HR@10 = 0.2383
-sampled test HR@10 = 0.2953
-sampled test NDCG@10 = 0.1605
-full test HR@10 = 0.00845
-full test NDCG@10 = 0.00385
-
-
-Operational note:
-- this full run completed safely on a `n1-standard-4` VM with a `Tesla T4`
-- memory stayed within a comfortable range during training, so this machine size is sufficient for the current baseline workflow
-
-## Next Steps
-
-After the baseline is stable, the most natural improvements are:
-- run TiSASRec experiments with personalized time intervals
-- compare all-review interactions vs filtered positive interactions such as `rating >= 4`
-- add app metadata embeddings from category or text fields
-- standardize experiment configs and logging
+Keep this root README and `steam-crawler/README.md` in the same change set as
+changes to data schemas, CLI flags, model entrypoints, or output artifacts.

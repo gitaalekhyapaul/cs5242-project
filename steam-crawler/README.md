@@ -40,7 +40,7 @@ For downstream analysis, the repo also includes two optional follow-up transform
 - Stage 4a starts from the sampled Stage 4 games and re-fetches only the missing store metadata needed for `price` plus one review page per game to recover `query_summary` and derive `%positive_reviews`.
 - Stage 5a starts from the Stage 5 review dataset and derives a narrow review table for downstream modeling and analytics.
 
-## Approach
+## Methodology
 
 The crawler is built around cacheable CSV stages so each expensive step can be resumed without recomputing earlier work.
 Stage 2 now checkpoints after every successful appdetails response, and Stage 5 checkpoints after every fetched review page.
@@ -190,6 +190,7 @@ Create a local virtual environment and install the runtime dependencies:
 cd steam-crawler
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -e .
 ```
 
 If you want to execute the notebook non-interactively on a cluster, install Jupyter tooling into whichever Python environment the cluster job will activate:
@@ -551,7 +552,7 @@ cd steam-crawler
 STEAM_API_KEY=... .venv/bin/python -m steam_crawler.pipeline --stage all --max-pages 1 --max-apps 25 --sample-size 5 --max-games 2
 ```
 
-You can add `--endpoint-mode direct` to either CLI, but the env var still has higher priority when both are set.
+You can add `--endpoint-mode direct` to either CLI. The CLI flag wins when both the flag and `STEAM_ENDPOINT_MODE` are set.
 
 ## Running the full crawl
 
@@ -559,7 +560,7 @@ You can add `--endpoint-mode direct` to either CLI, but the env var still has hi
 
 For a real dataset build:
 
-1. Ensure earlier smoke outputs are either removed or run with `force_refresh=True` in the notebook cells when needed.
+1. Clear earlier smoke outputs, or run with `force_refresh=True` in the notebook cells when needed.
 2. Set `STEAM_RUN_MODE=full`.
 3. Execute the notebook end-to-end, or run `run_notebook.py --run-mode full --stage all`.
 
@@ -569,20 +570,23 @@ The Postman collection is kept only as an API reference artifact and request exa
 ### Full run on SLURM
 
 The tracked cluster script is [`sbatch.sh`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/sbatch.sh).
-It reflects your current NUS SoC workflow:
+It reflects the current NUS SoC workflow:
 
-- activates the shared `~/env`
-- runs from the `steam-crawler` folder itself
-- redirects runtime stdout/stderr to `$HOME/logs` and `$HOME/errors`
+- activates `/home/g/gapaul/scratch/environments/base/bin/activate`
+- changes into `/home/g/gapaul/cs5242-project`
+- redirects runtime stdout/stderr to `/home/g/gapaul/logs` and `/home/g/gapaul/errors`
 - keeps the interactive Jupyter Lab command available but commented
-- executes the notebook headlessly via `jupyter nbconvert`
-- disables the notebook cell timeout for long-running full crawls
+- runs `python steam-crawler/run_notebook.py --run-mode full --stage stage5`
+- writes crawler data under `/home/g/gapaul/scratch/steam-crawler/data`
+- runs `python steam-crawler/progress_monitor.py` after the crawler run
 
 Before using it, make sure the shared environment already has the required packages:
 
 ```bash
-source ~/env/bin/activate
+cd /home/g/gapaul/cs5242-project/steam-crawler
+source /home/g/gapaul/scratch/environments/base/bin/activate
 pip install -r requirements.txt
+pip install -e .
 pip install notebook nbconvert
 ```
 
@@ -596,11 +600,13 @@ sbatch sbatch.sh
 The batch path in [`sbatch.sh`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/sbatch.sh) runs:
 
 ```bash
-jupyter nbconvert \
-  --to notebook \
-  --execute notebooks/steam_crawler.ipynb \
-  --ExecutePreprocessor.timeout=-1 \
-  --output steam_crawler.executed.ipynb
+python steam-crawler/run_notebook.py \
+  --run-mode full \
+  --stage stage5 \
+  --data-dir /home/g/gapaul/scratch/steam-crawler/data
+
+python steam-crawler/progress_monitor.py \
+  --data-dir /home/g/gapaul/scratch/steam-crawler/data
 ```
 
 For the full cluster run, make sure your cluster-side [`steam-crawler/.env`](/Users/gitaalekhyapaul/Documents/[Local] CS5242/cs5242-project/steam-crawler/.env) or exported environment includes both:
@@ -640,8 +646,21 @@ Generated outputs are written under `data/`:
 - `stage_02_app_details.csv.gz`
 - `stage_03_apps_with_metadata.csv.gz`
 - `stage_04_selected_games.csv`
+- `stage_04a_selected_games.csv`
+- `stage_04a_genre_mapping.csv`
 - `stage_05_reviews_dataset.csv.gz`
+- `stage_05a_reviews_dataset.csv.gz`
 - `stage_05_progress.csv`
+- `raw_selected_games.parquet`
+- `raw_reviews_dataset.parquet`
+- `steamrec_app_metadata.parquet`
+- `steamrec_app_category_mapping.parquet`
+- `steamrec_item_mapping.parquet`
+- `steamrec_interactions.parquet`
+- `steamrec_sequences.parquet`
+- `final_app_category.parquet`
+- `final_item_mapping.parquet`
+- `final_sequences.parquet`
 
 Generated logs are written under `logs/`:
 
